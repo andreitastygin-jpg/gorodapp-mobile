@@ -1,0 +1,40 @@
+{
+  "name": "gorodapp-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.24.0",
+    "@react-navigation/bottom-tabs": "^7.18.0",
+    "@react-navigation/native": "^7.3.1",
+    "@react-navigation/native-stack": "^7.17.3",
+    "base-64": "^1.0.0",
+    "expo": "^56.0.11",
+    "expo-auth-session": "^56.0.14",
+    "expo-crypto": "^56.0.4",
+    "expo-linking": "^56.0.14",
+    "expo-notifications": "^56.0.17",
+    "expo-secure-store": "^56.0.4",
+    "firebase": "^10.8.0",
+    "react": "^19.2.3",
+    "react-native": "^0.86.0",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.25.2",
+    "react-native-web": "^0.21.2",
+    "react-native-webview": "^13.16.1",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.2"
+  }
+}

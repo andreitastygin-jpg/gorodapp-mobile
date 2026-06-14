@@ -1,0 +1,7 @@
+{
+  "name": "gorodapp-mobile",
+  "description": "gorodapp-mobile",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
