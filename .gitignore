@@ -1,7 +1,12 @@
-.github/workflows/deploy.yml
-node_modules
-dist
+node_modules/
+.expo/
 .env
 .env.local
 .env.*.local
+dist/
+build/
 .DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+qr_search.txt

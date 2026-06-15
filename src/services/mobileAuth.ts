@@ -106,6 +106,7 @@ export const exchangeTelegramCodeForCustomToken = async (params: any) => {
       throw new Error('Invalid auth response');
   }
   
+  if (!auth) throw new Error('Firebase auth is not configured');
   await signInWithCustomToken(auth, data.customToken);
   
   await saveMobileAuthSession({ userId: data.userId, isNewUser: data.isNewUser });
@@ -151,7 +152,9 @@ export const saveMobileAuthSession = async (session: { userId: string; isNewUser
 };
 
 export const clearMobileAuthSession = async () => {
-  await firebaseSignOut(auth);
+  if (auth) {
+    await firebaseSignOut(auth);
+  }
   await SecureStore.deleteItemAsync('auth_session');
   useAuthStore.getState().clearMobileAuthSession();
 };

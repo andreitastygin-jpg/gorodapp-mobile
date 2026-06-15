@@ -16,17 +16,19 @@ const missingFirebaseKeys = Object.entries(firebaseConfig)
   .filter(([, value]) => !value)
   .map(([key]) => key);
 
-if (missingFirebaseKeys.length > 0) {
-  throw new Error(`Firebase config is incomplete: ${missingFirebaseKeys.join(', ')}`);
-}
+export const firebaseConfigError =
+  missingFirebaseKeys.length > 0
+    ? `Firebase config is incomplete: ${missingFirebaseKeys.join(', ')}`
+    : null;
 
 let app;
 try {
-  app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  if (!firebaseConfigError) {
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  }
 } catch (e) {
   console.warn('[Firebase] Initialization error');
-  throw e;
 }
 
-export const db = initializeFirestore(app, {});
-export const auth = getAuth(app);
+export const db = app ? initializeFirestore(app, {}) : null;
+export const auth = app ? getAuth(app) : null;

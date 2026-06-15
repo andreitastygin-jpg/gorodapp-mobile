@@ -22,7 +22,6 @@
     "expo-auth-session": "^56.0.14",
     "expo-crypto": "^56.0.4",
     "expo-linking": "^56.0.14",
-    "expo-notifications": "^56.0.17",
     "expo-secure-store": "^56.0.4",
     "firebase": "^10.8.0",
     "react": "^19.2.3",
