@@ -7,6 +7,11 @@
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "gorodapp",
+    "extra": {
+      "eas": {
+        "projectId": "17812600-8e44-4962-baee-bb7190fd90dd"
+      }
+    },
     "plugins": [
       [
         "expo-splash-screen",
@@ -30,11 +35,6 @@
     },
     "web": {
       "favicon": "./src/assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "17812600-8e44-4962-baee-bb7190fd90dd"
-      }
     }
   }
 }
