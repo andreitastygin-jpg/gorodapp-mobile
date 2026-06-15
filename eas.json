@@ -1,19 +1,23 @@
 {
   "cli": {
-    "version": ">= 12.0.0"
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "installCommand": "npm install"
     },
     "preview": {
+      "distribution": "internal",
+      "installCommand": "npm install",
       "android": {
         "buildType": "apk"
-      },
-      "distribution": "internal"
+      }
     },
     "production": {
+      "installCommand": "npm install",
       "android": {
         "buildType": "app-bundle"
       }
