@@ -1,8 +1,9 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-// Firebase public config
+// Firebase configuration structure
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -10,25 +11,44 @@ const firebaseConfig = {
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const missingFirebaseKeys = Object.entries(firebaseConfig)
-  .filter(([, value]) => !value)
-  .map(([key]) => key);
+let firebaseApp = null;
+let db = null;
+let auth = null;
+let firebaseConfigError = null;
 
-export const firebaseConfigError =
-  missingFirebaseKeys.length > 0
-    ? `Firebase config is incomplete: ${missingFirebaseKeys.join(', ')}`
-    : null;
+// Simple check to verify config has been supplied
+const isConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-let app;
-try {
-  if (!firebaseConfigError) {
-    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+if (!isConfigValid) {
+  firebaseConfigError = new Error('Firebase configuration is missing EXPO_PUBLIC_FIREBASE_API_KEY and/or EXPO_PUBLIC_FIREBASE_PROJECT_ID');
+} else {
+  try {
+    // Safely check if Firebase app has already been initialized
+    if (getApps().length === 0) {
+      firebaseApp = initializeApp(firebaseConfig);
+    } else {
+      firebaseApp = getApp();
+    }
+
+    if (firebaseApp) {
+      db = getFirestore(firebaseApp);
+
+      // Safely initialize Auth with AsyncStorage persistence to avoid duplication errors and restore auth state between sessions
+      try {
+        auth = initializeAuth(firebaseApp, {
+          persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+        });
+      } catch (authInitError) {
+        // Fallback to getAuth if initializeAuth is called multiple times during HMR or restarts
+        auth = getAuth(firebaseApp);
+      }
+    }
+  } catch (err) {
+    firebaseConfigError = err instanceof Error ? err : new Error(String(err));
   }
-} catch (e) {
-  console.warn('[Firebase] Initialization error');
 }
 
-export const db = app ? initializeFirestore(app, {}) : null;
-export const auth = app ? getAuth(app) : null;
+export { firebaseApp as app, db, auth, firebaseConfigError };
