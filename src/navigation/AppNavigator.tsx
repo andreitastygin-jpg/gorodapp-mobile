@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '../components/ui/AppText';
 import { linkingConfiguration } from '../services/deeplinks';
 
@@ -15,6 +16,8 @@ import ProfileScreen from '../screens/ProfileScreen';
 const Tab = createBottomTabNavigator();
 
 export function AppNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <NavigationContainer linking={linkingConfiguration}>
       <Tab.Navigator
@@ -25,8 +28,12 @@ export function AppNavigator() {
             backgroundColor: '#ffffff',
             borderTopWidth: 1,
             borderTopColor: '#e5e7eb',
-            height: Platform.OS === 'ios' ? 88 : 64,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+            height: Platform.OS === 'ios' 
+              ? 88 
+              : (insets.bottom > 0 ? 60 + insets.bottom : 60),
+            paddingBottom: Platform.OS === 'ios' 
+              ? 24 
+              : (insets.bottom > 0 ? insets.bottom : 8),
             paddingTop: 8,
           },
           headerShown: false,

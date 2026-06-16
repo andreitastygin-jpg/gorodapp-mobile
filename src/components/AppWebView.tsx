@@ -140,62 +140,76 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     }
   };
 
-  const isAllowedDomain = (targetUrl: string): boolean => {
+  const handleShouldStartLoadWithRequest = (request: any): boolean => {
+    const targetUrl = request.url;
+    console.log('[WebView] should start:', targetUrl);
+    if (!targetUrl) return false;
+
+    // 1. Internal special URLs/schemes
+    if (targetUrl === 'about:blank' || targetUrl.startsWith('data:') || targetUrl.startsWith('blob:')) {
+      console.log('[WebView] allow internal:', targetUrl);
+      return true;
+    }
+
+    // 2. Allowed domains to stay inside the WebView (including Telegram OAuth)
     const hostname = getHostname(targetUrl);
-    if (!hostname) return false;
-    
-    // Strict domain limits: only gorodapp.ru, yandexcloud.net components, and local developers
-    return (
+    if (
       hostname === 'gorodapp.ru' ||
       hostname.endsWith('.gorodapp.ru') ||
+      hostname === 'oauth.telegram.org' ||
+      hostname.endsWith('.oauth.telegram.org') ||
       hostname === 'storage.yandexcloud.net' ||
       hostname.endsWith('.yandexcloud.net') ||
       hostname === 'localhost' ||
       hostname === '127.0.0.1'
-    );
-  };
-
-  const handleShouldStartLoadWithRequest = (request: any): boolean => {
-    const targetUrl = request.url;
-    if (!targetUrl) return false;
-
-    // Direct blank target or exact primary URL rendering
-    if (targetUrl === 'about:blank' || targetUrl === url) {
+    ) {
+      console.log('[WebView] allow internal:', targetUrl);
       return true;
     }
 
-    // Special messaging, banking, or application schemes
-    const schemePattern = /^(tel|mailto|tg|bank|whatsapp|sms):/i;
-    if (schemePattern.test(targetUrl)) {
+    // 3. Explicit check for Telegram Web / App Redirect Links to open them externally
+    if (
+      targetUrl.includes('://t.me/') || 
+      targetUrl.includes('://www.t.me/') ||
+      targetUrl.includes('://telegram.me/') ||
+      targetUrl.includes('://www.telegram.me/')
+    ) {
+      console.log('[WebView] open external:', targetUrl);
       Linking.openURL(targetUrl).catch((err) =>
-        console.warn('[WebView] Error opening custom intent URI:', targetUrl, err)
+        console.warn('[WebView] Error opening Telegram URL externally:', targetUrl, err)
       );
       return false;
     }
 
-    // Non-http schemes
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      Linking.canOpenURL(targetUrl)
-        .then((supported) => {
-          if (supported) {
-            Linking.openURL(targetUrl);
-          } else {
-            console.warn('[WebView] Blocked unsupported non-http scheme:', targetUrl);
-          }
-        })
-        .catch((err) => console.error('[WebView] Error checking URI scheme support:', err));
+    // Explicit check for Telegram Deep Links (tg://)
+    if (targetUrl.startsWith('tg:')) {
+      console.log('[WebView] open external:', targetUrl);
+      Linking.openURL(targetUrl).catch((err) =>
+        console.warn('[WebView] Error opening Telegram intent:', targetUrl, err)
+      );
       return false;
     }
 
-    // Allowed secure domains
-    if (isAllowedDomain(targetUrl)) {
-      return true;
+    // 4. Any other http/https external link: open in external browser
+    if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+      console.log('[WebView] open external:', targetUrl);
+      Linking.openURL(targetUrl).catch((err) =>
+        console.warn('[WebView] Error redirecting external link to browser:', targetUrl, err)
+      );
+      return false;
     }
 
-    // External HTTP/HTTPS links are safely passed to the default web browser instead of rendering inside App Webview
-    Linking.openURL(targetUrl).catch((err) =>
-      console.warn('[WebView] Error redirecting external link to browser:', targetUrl, err)
-    );
+    // 5. Non-http schemes (e.g., tel, mailto, sms, bank etc.) or unknown schemes
+    console.log('[WebView] block unknown:', targetUrl);
+    Linking.canOpenURL(targetUrl)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(targetUrl);
+        } else {
+          console.warn('[WebView] Blocked unsupported non-http scheme:', targetUrl);
+        }
+      })
+      .catch((err) => console.error('[WebView] Error checking URI scheme support:', err));
     return false;
   };
 
@@ -236,6 +250,19 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         ref={webViewRef}
         key={`webview-${webViewKey}`}
         source={{ uri: url }}
+        originWhitelist={[
+          'https://gorodapp.ru/*',
+          'https://*.gorodapp.ru/*',
+          'https://oauth.telegram.org/*',
+          'https://t.me/*',
+          'https://www.t.me/*',
+          'https://telegram.me/*',
+          'https://www.telegram.me/*',
+          'tg://*',
+          'about:blank',
+          'data:*',
+          'blob:*'
+        ]}
         webviewDebuggingEnabled={true}
         injectedJavaScriptBeforeContentLoaded={`
           (function() {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { firebaseConfigError } from './src/services/firebase';
@@ -16,9 +17,11 @@ export default function App() {
   }
 
   return (
-    <AppErrorBoundary>
-      <AppNavigator />
-    </AppErrorBoundary>
+    <SafeAreaProvider>
+      <AppErrorBoundary>
+        <AppNavigator />
+      </AppErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 
