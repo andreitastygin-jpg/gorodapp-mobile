@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth } from 'firebase/auth';
 import type { FirebaseApp } from 'firebase/app';
 import type { Firestore } from 'firebase/firestore';
 import type { Auth } from 'firebase/auth';
@@ -39,15 +38,12 @@ if (!isConfigValid) {
     if (firebaseApp) {
       db = getFirestore(firebaseApp);
 
-      // Safely initialize Auth with AsyncStorage persistence to avoid duplication errors and restore auth state between sessions
       try {
-        auth = initializeAuth(firebaseApp, {
-          persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-        });
-      } catch (authInitError) {
-        const authInitMessage =
-          authInitError instanceof Error ? authInitError.message : String(authInitError);
-        firebaseConfigError = `Firebase Auth initializeAuth failed: ${authInitMessage}`;
+        auth = getAuth(firebaseApp);
+      } catch (authError) {
+        const authMessage =
+          authError instanceof Error ? authError.message : String(authError);
+        firebaseConfigError = `Firebase Auth getAuth failed: ${authMessage}`;
         auth = null;
       }
     }
