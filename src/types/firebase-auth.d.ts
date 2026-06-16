@@ -1,6 +1,6 @@
-declare module 'firebase/auth/react-native' {
-  export * from 'firebase/auth';
-  import type { Persistence } from 'firebase/auth';
+import 'firebase/auth';
+import type { Persistence } from 'firebase/auth';
+declare module 'firebase/auth' {
   type ReactNativeAsyncStorage = {
     getItem: (key: string) => Promise<string | null>;
     setItem: (key: string, value: string) => Promise<void>;
