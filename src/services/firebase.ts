@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 import type { FirebaseApp } from 'firebase/app';
 import type { Firestore } from 'firebase/firestore';
 import type { Auth } from 'firebase/auth';
@@ -37,15 +36,13 @@ if (!isConfigValid) {
 
     if (firebaseApp) {
       db = getFirestore(firebaseApp);
-
-      try {
-        auth = getAuth(firebaseApp);
-      } catch (authError) {
-        const authMessage =
-          authError instanceof Error ? authError.message : String(authError);
-        firebaseConfigError = `Firebase Auth getAuth failed: ${authMessage}`;
-        auth = null;
-      }
+      
+      // Важно:
+      // Firebase Auth временно НЕ инициализируем на старте приложения,
+      // потому что в Android APK он даёт runtime error:
+      // "Component auth has not been registered yet".
+      // Auth будет подключён отдельно лениво в процессе Telegram login.
+      auth = null;
     }
   } catch (err) {
     firebaseConfigError = err instanceof Error ? err.message : String(err);
