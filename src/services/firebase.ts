@@ -45,8 +45,10 @@ if (!isConfigValid) {
           persistence: getReactNativePersistence(ReactNativeAsyncStorage),
         });
       } catch (authInitError) {
-        // Fallback to getAuth if initializeAuth is called multiple times during HMR or restarts
-        auth = getAuth(firebaseApp);
+        const authInitMessage =
+          authInitError instanceof Error ? authInitError.message : String(authInitError);
+        firebaseConfigError = `Firebase Auth initializeAuth failed: ${authInitMessage}`;
+        auth = null;
       }
     }
   } catch (err) {
