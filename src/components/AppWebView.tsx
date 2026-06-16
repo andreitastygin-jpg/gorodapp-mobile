@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform, Linking, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { ErrorView } from './ui/ErrorView';
+import { useIsFocused } from '@react-navigation/native';
+
+// Global variable to keep track of the previously visited URL to calculate tab transitions
+let lastActiveUrlGlobal: string = 'https://gorodapp.ru?tab=event';
 
 interface AppWebViewProps {
   url: string;
@@ -23,6 +27,36 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const webViewRef = useRef<WebView>(null);
   const isWebViewLoadedRef = useRef(false);
   const hasSentAuthTokenRef = useRef(false);
+
+  const isFocused = useIsFocused();
+
+  useEffect(() => {
+    if (isFocused) {
+      const oldUrl = lastActiveUrlGlobal;
+      const newUrl = url;
+      
+      const getTabNameFromUrl = (u: string) => {
+        if (u.includes('tab=event')) return 'HomeTab (event)';
+        if (u.includes('tab=market')) return 'MarketTab (market)';
+        if (u.includes('tab=food')) return 'FoodTab (food)';
+        if (u.includes('tab=cart')) return 'CartTab (cart)';
+        if (u.includes('tab=profile')) return 'ProfileTab (profile)';
+        return 'Unknown Tab';
+      };
+
+      const tabName = getTabNameFromUrl(newUrl);
+
+      console.log('[Tabs] press:', tabName, url);
+      console.log('[Tabs] transition details:', {
+        tabName,
+        urlToBeOpened: url,
+        oldUrl,
+        newUrl,
+      });
+
+      lastActiveUrlGlobal = url;
+    }
+  }, [isFocused, url]);
 
   useEffect(() => {
     hasSentAuthTokenRef.current = false;
@@ -51,6 +85,13 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   };
 
   const handleMessage = (event: any) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data);
+      console.log('[WebView message]', JSON.stringify(message));
+    } catch {
+      console.log('[WebView message raw]', event.nativeEvent.data);
+    }
+
     try {
         const data = JSON.parse(event.nativeEvent.data);
         if (data.source !== 'gorodapp-web') return;
@@ -172,17 +213,80 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         ref={webViewRef}
         key={`webview-${webViewKey}`}
         source={{ uri: url }}
-        onLoadStart={() => {
+        webviewDebuggingEnabled={true}
+        injectedJavaScriptBeforeContentLoaded={`
+          (function() {
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            console.log = function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_CONSOLE_LOG',
+                payload: Array.from(arguments).map(String)
+              }));
+              originalLog.apply(console, arguments);
+            };
+            console.error = function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_CONSOLE_ERROR',
+                payload: Array.from(arguments).map(String)
+              }));
+              originalError.apply(console, arguments);
+            };
+            console.warn = function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_CONSOLE_WARN',
+                payload: Array.from(arguments).map(String)
+              }));
+              originalWarn.apply(console, arguments);
+            };
+            window.addEventListener('error', function(event) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_WINDOW_ERROR',
+                payload: {
+                  message: event.message,
+                  filename: event.filename,
+                  lineno: event.lineno,
+                  colno: event.colno
+                }
+              }));
+            });
+            window.addEventListener('unhandledrejection', function(event) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_UNHANDLED_REJECTION',
+                payload: String(event.reason)
+              }));
+            });
+          })();
+          true;
+        `}
+        onLoadStart={(event) => {
+          console.log('[WebView] load start:', event.nativeEvent.url);
           setLoading(true);
           setHasError(false);
         }}
-        onLoadEnd={() => {
+        onLoadEnd={(event) => {
+            console.log('[WebView] load end:', event.nativeEvent.url);
             setLoading(false);
             isWebViewLoadedRef.current = true;
             injectAuthToken();
         }}
-        onHttpError={() => setHasError(true)}
-        onError={() => setHasError(true)}
+        onHttpError={(event) => {
+          console.log('[WebView] http error:', JSON.stringify(event.nativeEvent));
+          setHasError(true);
+        }}
+        onError={(event) => {
+          console.log('[WebView] error:', JSON.stringify(event.nativeEvent));
+          setHasError(true);
+        }}
+        onNavigationStateChange={(navState) => {
+          console.log('[WebView] navigation:', JSON.stringify({
+            url: navState.url,
+            loading: navState.loading,
+            title: navState.title,
+            canGoBack: navState.canGoBack,
+          }));
+        }}
         onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         onMessage={handleMessage}
         style={styles.webview}
