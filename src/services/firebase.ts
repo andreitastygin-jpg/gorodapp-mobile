@@ -1,7 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import { initializeAuth, getAuth } from 'firebase/auth';
+import { getReactNativePersistence } from 'firebase/auth/react-native';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import type { FirebaseApp } from 'firebase/app';
+import type { Firestore } from 'firebase/firestore';
+import type { Auth } from 'firebase/auth';
 
 // Firebase configuration structure
 const firebaseConfig = {
@@ -14,16 +18,16 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-let firebaseApp = null;
-let db = null;
-let auth = null;
-let firebaseConfigError = null;
+let firebaseApp: FirebaseApp | null = null;
+let db: Firestore | null = null;
+let auth: Auth | null = null;
+let firebaseConfigError: string | null = null;
 
 // Simple check to verify config has been supplied
 const isConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 
 if (!isConfigValid) {
-  firebaseConfigError = new Error('Firebase configuration is missing EXPO_PUBLIC_FIREBASE_API_KEY and/or EXPO_PUBLIC_FIREBASE_PROJECT_ID');
+  firebaseConfigError = 'Firebase configuration is missing EXPO_PUBLIC_FIREBASE_API_KEY and/or EXPO_PUBLIC_FIREBASE_PROJECT_ID';
 } else {
   try {
     // Safely check if Firebase app has already been initialized
@@ -47,7 +51,7 @@ if (!isConfigValid) {
       }
     }
   } catch (err) {
-    firebaseConfigError = err instanceof Error ? err : new Error(String(err));
+    firebaseConfigError = err instanceof Error ? err.message : String(err);
   }
 }
 
