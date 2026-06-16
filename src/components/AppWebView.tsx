@@ -28,6 +28,29 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const isWebViewLoadedRef = useRef(false);
   const hasSentAuthTokenRef = useRef(false);
 
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLoadingTimeout = () => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+  };
+
+  const startLoadingTimeout = () => {
+    clearLoadingTimeout();
+    loadingTimeoutRef.current = setTimeout(() => {
+      console.log('[WebView] loading timeout fallback');
+      setLoading(false);
+    }, 12000);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearLoadingTimeout();
+    };
+  }, []);
+
   const isFocused = useIsFocused();
 
   useEffect(() => {
@@ -264,19 +287,25 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           console.log('[WebView] load start:', event.nativeEvent.url);
           setLoading(true);
           setHasError(false);
+          startLoadingTimeout();
         }}
         onLoadEnd={(event) => {
             console.log('[WebView] load end:', event.nativeEvent.url);
+            clearLoadingTimeout();
             setLoading(false);
             isWebViewLoadedRef.current = true;
             injectAuthToken();
         }}
         onHttpError={(event) => {
           console.log('[WebView] http error:', JSON.stringify(event.nativeEvent));
+          clearLoadingTimeout();
+          setLoading(false);
           setHasError(true);
         }}
         onError={(event) => {
           console.log('[WebView] error:', JSON.stringify(event.nativeEvent));
+          clearLoadingTimeout();
+          setLoading(false);
           setHasError(true);
         }}
         onNavigationStateChange={(navState) => {
@@ -286,6 +315,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             title: navState.title,
             canGoBack: navState.canGoBack,
           }));
+          if (!navState.loading) {
+            clearLoadingTimeout();
+            setLoading(false);
+          }
         }}
         onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         onMessage={handleMessage}
