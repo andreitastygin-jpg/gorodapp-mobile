@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Platform, Linking, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Platform, Linking, ActivityIndicator, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ErrorView } from './ui/ErrorView';
 import { useIsFocused } from '@react-navigation/native';
@@ -24,6 +25,8 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const [hasError, setHasError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
   const [currentUrl, setCurrentUrl] = useState(url);
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [isAuthModalVisible, setIsAuthModalVisible] = useState(false);
 
   useEffect(() => {
     setCurrentUrl(url);
@@ -113,23 +116,55 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   };
 
   const handleMessage = (event: any) => {
+    let data: any = null;
     try {
-      const message = JSON.parse(event.nativeEvent.data);
-      console.log('[WebView message]', JSON.stringify(message));
+      data = JSON.parse(event.nativeEvent.data);
+      console.log('[WebView message]', JSON.stringify(data));
     } catch {
       console.log('[WebView message raw]', event.nativeEvent.data);
     }
 
-    try {
-        const data = JSON.parse(event.nativeEvent.data);
-        if (data.source !== 'gorodapp-web') return;
-
-        if (data.type === 'GORODAPP_WEB_AUTH_SUCCESS') {
-            onWebAuthSuccess?.();
-        } else if (data.type === 'GORODAPP_WEB_AUTH_ERROR') {
-            onWebAuthError?.(data.error || 'auth_failed');
+    if (data) {
+      try {
+        if (data.type === 'TELEGRAM_OAUTH_OPEN' && data.url) {
+          console.log('[WebView message] TELEGRAM_OAUTH_OPEN:', data.url);
+          console.log('[WebView] open auth modal:', data.url);
+          setAuthUrl(data.url);
+          setIsAuthModalVisible(true);
+          return;
         }
-    } catch {}
+        if (data.type === 'WEB_WINDOW_OPEN' && data.url) {
+          console.log('[WebView message] WEB_WINDOW_OPEN:', data.url);
+          if (data.url.startsWith('https://oauth.telegram.org/') || data.url.includes('oauth.telegram.org/auth')) {
+            console.log('[WebView] WEB_WINDOW_OPEN intercept Telegram OAuth:', data.url);
+            console.log('[WebView] open auth modal:', data.url);
+            setAuthUrl(data.url);
+            setIsAuthModalVisible(true);
+            return;
+          }
+        }
+        if (data.type === 'WEB_LINK_CLICK' && data.url) {
+          console.log('[WebView message] WEB_LINK_CLICK:', data.url);
+          if (data.url.startsWith('https://oauth.telegram.org/') || data.url.includes('oauth.telegram.org/auth')) {
+            console.log('[WebView] WEB_LINK_CLICK intercept Telegram OAuth:', data.url);
+            console.log('[WebView] open auth modal:', data.url);
+            setAuthUrl(data.url);
+            setIsAuthModalVisible(true);
+            return;
+          }
+        }
+
+        if (data.source === 'gorodapp-web') {
+          if (data.type === 'GORODAPP_WEB_AUTH_SUCCESS') {
+              onWebAuthSuccess?.();
+          } else if (data.type === 'GORODAPP_WEB_AUTH_ERROR') {
+              onWebAuthError?.(data.error || 'auth_failed');
+          }
+        }
+      } catch (err) {
+        console.error('[WebView] Error handling decoded message data:', err);
+      }
+    }
   };
 
   // Safely extracts hostname from a URL without relying on external URL polyfills
@@ -154,6 +189,15 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     if (targetUrl === 'about:blank' || targetUrl.startsWith('data:') || targetUrl.startsWith('blob:')) {
       console.log('[WebView] allow internal:', targetUrl);
       return true;
+    }
+
+    // Intercept Telegram OAuth on the main WebView to keep the main WebView on gorodapp.ru
+    if (targetUrl.startsWith('https://oauth.telegram.org/') || targetUrl.includes('oauth.telegram.org/auth')) {
+      console.log('[WebView] intercept Telegram OAuth:', targetUrl);
+      console.log('[WebView] open auth modal:', targetUrl);
+      setAuthUrl(targetUrl);
+      setIsAuthModalVisible(true);
+      return false;
     }
 
     // 2. Allowed domains to stay inside the WebView (including Telegram OAuth)
@@ -224,10 +268,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     
     if (!targetUrl) return;
 
-    // If it is Telegram OAuth, open inside current WebView
+    // If it is Telegram OAuth, open inside auth modal
     if (targetUrl.startsWith('https://oauth.telegram.org/')) {
       console.log('[WebView] open window internal oauth:', targetUrl);
-      setCurrentUrl(targetUrl);
+      setAuthUrl(targetUrl);
+      setIsAuthModalVisible(true);
       return;
     }
 
@@ -306,6 +351,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         source={{ uri: currentUrl }}
         setSupportMultipleWindows={false}
         javaScriptCanOpenWindowsAutomatically={true}
+        sharedCookiesEnabled={true}
+        thirdPartyCookiesEnabled={true}
+        domStorageEnabled={true}
+        javaScriptEnabled={true}
         onOpenWindow={handleOpenWindow}
         originWhitelist={[
           'https://gorodapp.ru/*',
@@ -364,6 +413,60 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 payload: String(event.reason)
               }));
             });
+
+            // Intercept window.open
+            const originalOpen = window.open;
+            window.open = function(url, target, features) {
+              try {
+                const targetUrl = String(url || '');
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'WEB_WINDOW_OPEN',
+                  url: targetUrl,
+                  target: String(target || '')
+                }));
+                if (targetUrl.indexOf('https://oauth.telegram.org/') === 0) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'TELEGRAM_OAUTH_OPEN',
+                    url: targetUrl
+                  }));
+                  return null;
+                }
+              } catch (e) {}
+              return originalOpen.apply(window, arguments);
+            };
+
+            // Intercept standard click links
+            document.addEventListener('click', function(event) {
+              const link = event.target && event.target.closest ? event.target.closest('a') : null;
+              if (!link || !link.href) return;
+              const href = String(link.href);
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_LINK_CLICK',
+                url: href,
+                target: link.target || ''
+              }));
+              if (href.indexOf('https://oauth.telegram.org/') === 0) {
+                event.preventDefault();
+                event.stopPropagation();
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'TELEGRAM_OAUTH_OPEN',
+                  url: href
+                }));
+              }
+            }, true);
+
+            // Change target blank of Telegram OAuth to self
+            function normalizeTelegramOAuthLinks() {
+              document.querySelectorAll('a[href^="https://oauth.telegram.org/"]').forEach(function(a) {
+                a.setAttribute('target', '_self');
+                a.removeAttribute('rel');
+              });
+            }
+            normalizeTelegramOAuthLinks();
+            new MutationObserver(normalizeTelegramOAuthLinks).observe(document.documentElement, {
+              childList: true,
+              subtree: true
+            });
           })();
           true;
         `}
@@ -419,6 +522,175 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           <ErrorView message="Не удалось загрузить страницу" onRetry={handleRetry} />
         </View>
       )}
+
+      <Modal
+        visible={isAuthModalVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
+          console.log('[AuthWebView] close and reload main webview (requestClose)');
+          setIsAuthModalVisible(false);
+          setAuthUrl(null);
+        }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
+          {authUrl ? (
+            <WebView
+              source={{ uri: authUrl }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              sharedCookiesEnabled={true}
+              thirdPartyCookiesEnabled={true}
+              setSupportMultipleWindows={false}
+              javaScriptCanOpenWindowsAutomatically={true}
+              originWhitelist={[
+                'https://gorodapp.ru/*',
+                'https://*.gorodapp.ru/*',
+                'https://oauth.telegram.org/*',
+                'https://t.me/*',
+                'https://www.t.me/*',
+                'https://telegram.me/*',
+                'https://www.telegram.me/*',
+                'tg://*',
+                'about:blank',
+                'data:*',
+                'blob:*'
+              ]}
+              onNavigationStateChange={(navState) => {
+                const url = navState.url || '';
+                console.log('[AuthWebView] navigation:', url);
+                console.log('[AuthWebView] navigation details:', JSON.stringify({
+                  url: navState.url,
+                  loading: navState.loading,
+                  title: navState.title,
+                }));
+                if (url.startsWith('https://gorodapp.ru')) {
+                  console.log('[AuthWebView] returned to gorodapp:', url);
+                  console.log('[AuthWebView] close and reload main webview');
+                  setIsAuthModalVisible(false);
+                  setAuthUrl(null);
+                  setTimeout(() => {
+                    webViewRef.current?.reload();
+                  }, 300);
+                }
+              }}
+              onShouldStartLoadWithRequest={(request) => {
+                const url = request.url || '';
+                console.log('[AuthWebView] should start:', url);
+                if (
+                  url.startsWith('about:blank') ||
+                  url.startsWith('data:') ||
+                  url.startsWith('blob:')
+                ) {
+                  return true;
+                }
+                if (
+                  url.startsWith('https://oauth.telegram.org') ||
+                  url.startsWith('https://gorodapp.ru')
+                ) {
+                  return true;
+                }
+                if (
+                  url.startsWith('tg://')
+                ) {
+                  console.log('[AuthWebView] open external tg scheme:', url);
+                  Linking.openURL(url).catch((err) => {
+                    console.log('[AuthWebView] open external failed:', String(err));
+                  });
+                  return false;
+                }
+                if (
+                  url.startsWith('https://t.me/') ||
+                  url.startsWith('https://www.t.me/') ||
+                  url.startsWith('https://telegram.me/') ||
+                  url.startsWith('https://www.telegram.me/') ||
+                  url.includes('://t.me/') ||
+                  url.includes('://www.t.me/') ||
+                  url.includes('://telegram.me/') ||
+                  url.includes('://www.telegram.me/')
+                ) {
+                  console.log('[AuthWebView] allow telegram web inside modal:', url);
+                  return true;
+                }
+                return true;
+              }}
+              onOpenWindow={(event) => {
+                const targetUrl = event.nativeEvent.targetUrl;
+                console.log('[AuthWebView] open window:', targetUrl);
+                if (targetUrl?.startsWith('https://oauth.telegram.org')) {
+                  setAuthUrl(targetUrl);
+                  return;
+                }
+                if (
+                  targetUrl?.startsWith('https://t.me') ||
+                  targetUrl?.startsWith('https://www.t.me') ||
+                  targetUrl?.startsWith('https://telegram.me') ||
+                  targetUrl?.startsWith('https://www.telegram.me')
+                ) {
+                  console.log('[AuthWebView] open window internal telegram web:', targetUrl);
+                  setAuthUrl(targetUrl);
+                  return;
+                }
+                if (targetUrl?.startsWith('tg://')) {
+                  Linking.openURL(targetUrl).catch((err) => {
+                    console.log('[AuthWebView] tg open failed:', String(err));
+                  });
+                  return;
+                }
+              }}
+              injectedJavaScriptBeforeContentLoaded={`
+                (function() {
+                  const originalOpen = window.open;
+                  window.open = function(url, target, features) {
+                    try {
+                      const targetUrl = String(url || '');
+                      window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'AUTH_WINDOW_OPEN',
+                        url: targetUrl,
+                        target: String(target || '')
+                      }));
+                      if (
+                        targetUrl.indexOf('https://oauth.telegram.org') === 0 ||
+                        targetUrl.indexOf('https://t.me') === 0 ||
+                        targetUrl.indexOf('https://www.t.me') === 0 ||
+                        targetUrl.indexOf('https://telegram.me') === 0 ||
+                        targetUrl.indexOf('https://www.telegram.me') === 0 ||
+                        targetUrl.indexOf('https://gorodapp.ru') === 0
+                      ) {
+                        return null;
+                      }
+                    } catch (e) {}
+                    return originalOpen.apply(window, arguments);
+                  };
+                })();
+                true;
+              `}
+              onMessage={(event) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  console.log('[AuthWebView message]', JSON.stringify(data));
+                  if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
+                    const url = String(data.url);
+                    if (
+                      url.startsWith('https://oauth.telegram.org') ||
+                      url.startsWith('https://t.me') ||
+                      url.startsWith('https://www.t.me') ||
+                      url.startsWith('https://telegram.me') ||
+                      url.startsWith('https://www.telegram.me') ||
+                      url.startsWith('https://gorodapp.ru')
+                    ) {
+                      console.log('[AuthWebView] set auth url from window.open:', url);
+                      setAuthUrl(url);
+                    }
+                  }
+                } catch (err) {
+                  console.log('[AuthWebView message raw]', event.nativeEvent.data);
+                }
+              }}
+            />
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 };
