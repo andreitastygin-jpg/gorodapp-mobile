@@ -126,6 +126,17 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
 
     if (data) {
       try {
+        if (data.type === 'TELEGRAM_IFRAME_FOUND' && data.url) {
+          console.log('[WebView message] TELEGRAM_IFRAME_FOUND:', data.url);
+          return;
+        }
+        if (data.type === 'TELEGRAM_IFRAME_CLICK' && data.url) {
+          console.log('[WebView message] TELEGRAM_IFRAME_CLICK:', data.url);
+          console.log('[WebView] open auth modal from iframe:', data.url);
+          setAuthUrl(data.url);
+          setIsAuthModalVisible(true);
+          return;
+        }
         if (data.type === 'TELEGRAM_OAUTH_OPEN' && data.url) {
           console.log('[WebView message] TELEGRAM_OAUTH_OPEN:', data.url);
           console.log('[WebView] open auth modal:', data.url);
@@ -464,6 +475,64 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             }
             normalizeTelegramOAuthLinks();
             new MutationObserver(normalizeTelegramOAuthLinks).observe(document.documentElement, {
+              childList: true,
+              subtree: true
+            });
+
+            // Setup Telegram iframe overlay detection and positioning
+            function setupTelegramIframeOverlay() {
+              const iframes = document.querySelectorAll('iframe[src*="oauth.telegram.org"], iframe[src*="telegram.org"]');
+              iframes.forEach(function(iframe) {
+                if (iframe.getAttribute('data-gorod-telegram-overlay') === 'true') {
+                  return;
+                }
+                iframe.setAttribute('data-gorod-telegram-overlay', 'true');
+                const iframeSrc = iframe.getAttribute('src') || iframe.src;
+                
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'TELEGRAM_IFRAME_FOUND',
+                  url: iframeSrc
+                }));
+
+                const parent = iframe.parentNode;
+                if (parent) {
+                  const parentStyle = window.getComputedStyle(parent);
+                  if (parentStyle.position === 'static') {
+                    parent.style.position = 'relative';
+                  }
+                  
+                  const overlay = document.createElement('div');
+                  overlay.style.position = 'absolute';
+                  overlay.style.top = iframe.offsetTop + 'px';
+                  overlay.style.left = iframe.offsetLeft + 'px';
+                  overlay.style.width = (iframe.offsetWidth || 200) + 'px';
+                  overlay.style.height = (iframe.offsetHeight || 40) + 'px';
+                  overlay.style.zIndex = '999999';
+                  overlay.style.cursor = 'pointer';
+                  overlay.style.background = 'rgba(0,0,0,0)';
+                  overlay.className = 'telegram-iframe-click-overlay';
+                  
+                  overlay.addEventListener('click', function(e) {
+                    console.log('[Overlay] Clicked overlay on Telegram iframe:', iframeSrc);
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                      type: 'TELEGRAM_IFRAME_CLICK',
+                      url: iframeSrc
+                    }));
+                  }, true);
+                  
+                  parent.appendChild(overlay);
+                  console.log('[Overlay Setup] Overlay created for:', iframeSrc);
+                }
+              });
+            }
+            setupTelegramIframeOverlay();
+
+            // Observe DOM changes to dynamically inject overlays for newly loaded Telegram iframes
+            new MutationObserver(function() {
+              setupTelegramIframeOverlay();
+            }).observe(document.documentElement, {
               childList: true,
               subtree: true
             });
