@@ -25,16 +25,7 @@ export function AppNavigator() {
           tabBarActiveTintColor: '#3b82f6',
           tabBarInactiveTintColor: '#6b7280',
           tabBarStyle: {
-            backgroundColor: '#ffffff',
-            borderTopWidth: 1,
-            borderTopColor: '#e5e7eb',
-            height: Platform.OS === 'ios' 
-              ? 88 
-              : (insets.bottom > 0 ? 60 + insets.bottom : 60),
-            paddingBottom: Platform.OS === 'ios' 
-              ? 24 
-              : (insets.bottom > 0 ? insets.bottom : 8),
-            paddingTop: 8,
+            display: 'none',
           },
           headerShown: false,
         }}

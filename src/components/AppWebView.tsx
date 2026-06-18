@@ -23,6 +23,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
+  const [currentUrl, setCurrentUrl] = useState(url);
+
+  useEffect(() => {
+    setCurrentUrl(url);
+  }, [url]);
   
   const webViewRef = useRef<WebView>(null);
   const isWebViewLoadedRef = useRef(false);
@@ -213,6 +218,55 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     return false;
   };
 
+  const handleOpenWindow = (event: any) => {
+    const targetUrl = event.nativeEvent.targetUrl;
+    console.log('[WebView] open window:', targetUrl);
+    
+    if (!targetUrl) return;
+
+    // If it is Telegram OAuth, open inside current WebView
+    if (targetUrl.startsWith('https://oauth.telegram.org/')) {
+      console.log('[WebView] open window internal oauth:', targetUrl);
+      setCurrentUrl(targetUrl);
+      return;
+    }
+
+    // If it is gorodapp.ru, open inside WebView
+    if (targetUrl.startsWith('https://gorodapp.ru/') || targetUrl.includes('gorodapp.ru')) {
+      console.log('[WebView] open window internal gorod:', targetUrl);
+      setCurrentUrl(targetUrl);
+      return;
+    }
+
+    // tg:// can open externally
+    if (targetUrl.startsWith('tg:')) {
+      console.log('[WebView] open window external tg:', targetUrl);
+      Linking.openURL(targetUrl).catch((err) => {
+        console.warn('[WebView] open window tg failed:', String(err));
+      });
+      return;
+    }
+
+    // t.me / telegram.me externally
+    if (
+      targetUrl.includes('://t.me/') ||
+      targetUrl.includes('://www.t.me/') ||
+      targetUrl.includes('://telegram.me/') ||
+      targetUrl.includes('://www.telegram.me/')
+    ) {
+      console.log('[WebView] open window external telegram link:', targetUrl);
+      Linking.openURL(targetUrl).catch((err) => {
+        console.warn('[WebView] open window telegram link failed:', String(err));
+      });
+      return;
+    }
+
+    console.log('[WebView] open window external other:', targetUrl);
+    Linking.openURL(targetUrl).catch((err) => {
+      console.warn('[WebView] open window external failed:', String(err));
+    });
+  };
+
   const handleRetry = () => {
     setHasError(false);
     setLoading(true);
@@ -225,7 +279,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
       <View style={styles.container}>
         <iframe
           key={`iframe-${webViewKey}`}
-          src={url}
+          src={currentUrl}
           style={styles.webFrame}
           onLoad={() => setLoading(false)}
           onError={() => setHasError(true)}
@@ -249,7 +303,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
       <WebView
         ref={webViewRef}
         key={`webview-${webViewKey}`}
-        source={{ uri: url }}
+        source={{ uri: currentUrl }}
+        setSupportMultipleWindows={false}
+        javaScriptCanOpenWindowsAutomatically={true}
+        onOpenWindow={handleOpenWindow}
         originWhitelist={[
           'https://gorodapp.ru/*',
           'https://*.gorodapp.ru/*',
