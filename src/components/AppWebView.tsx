@@ -126,6 +126,22 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
 
     if (data) {
       try {
+        if (data.type === 'WEB_INJECT_READY') {
+          console.log('[WebView message] WEB_INJECT_READY:', JSON.stringify(data));
+          return;
+        }
+        if (data.type === 'DOM_AUTH_DIAGNOSTIC') {
+          console.log('[WebView message] DOM_AUTH_DIAGNOSTIC:', JSON.stringify(data.payload));
+          return;
+        }
+        if (data.type === 'WEB_GLOBAL_INTERACTION') {
+          console.log('[WebView message] WEB_GLOBAL_INTERACTION:', JSON.stringify(data));
+          return;
+        }
+        if (data.type === 'WEB_HISTORY_CHANGE') {
+          console.log('[WebView message] WEB_HISTORY_CHANGE:', JSON.stringify(data));
+          return;
+        }
         if (data.type === 'TELEGRAM_IFRAME_FOUND' && data.url) {
           console.log('[WebView message] TELEGRAM_IFRAME_FOUND:', data.url);
           return;
@@ -446,6 +462,104 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               return originalOpen.apply(window, arguments);
             };
 
+            // Send WEB_INJECT_READY
+            try {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'WEB_INJECT_READY',
+                href: window.location.href,
+                hasReactNativeWebView: !!window.ReactNativeWebView
+              }));
+            } catch (e) {}
+
+            // Track location/history changes
+            try {
+              const pushStateOrig = history.pushState;
+              history.pushState = function() {
+                const res = pushStateOrig.apply(history, arguments);
+                try {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_HISTORY_CHANGE',
+                    method: 'pushState',
+                    href: window.location.href,
+                    arguments: Array.from(arguments).map(String)
+                  }));
+                } catch (e) {}
+                return res;
+              };
+
+              const replaceStateOrig = history.replaceState;
+              history.replaceState = function() {
+                const res = replaceStateOrig.apply(history, arguments);
+                try {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_HISTORY_CHANGE',
+                    method: 'replaceState',
+                    href: window.location.href,
+                    arguments: Array.from(arguments).map(String)
+                  }));
+                } catch (e) {}
+                return res;
+              };
+
+              window.addEventListener('popstate', function(event) {
+                try {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_HISTORY_CHANGE',
+                    method: 'popstate',
+                    href: window.location.href
+                  }));
+                } catch (e) {}
+              });
+            } catch (e) {}
+
+            // Track global interactions
+            ['touchstart', 'click', 'pointerdown'].forEach(function(eventName) {
+              document.addEventListener(eventName, function(event) {
+                try {
+                  const target = event.target;
+                  if (!target) return;
+                  const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
+                  const closestLink = target.closest ? target.closest('a') : null;
+                  const closestButton = target.closest ? target.closest('button') : null;
+                  const closestIframe = target.closest ? target.closest('iframe') : null;
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_GLOBAL_INTERACTION',
+                    eventName: eventName,
+                    target: {
+                      tagName: target.tagName,
+                      id: target.id || '',
+                      className: String(target.className || ''),
+                      text: String(target.textContent || '').slice(0, 120),
+                      href: target.href || '',
+                      src: target.src || '',
+                      rect: rect ? {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height
+                      } : null
+                    },
+                    closestLink: closestLink ? {
+                      href: closestLink.href || '',
+                      target: closestLink.target || '',
+                      text: String(closestLink.textContent || '').slice(0, 120)
+                    } : null,
+                    closestButton: closestButton ? {
+                      text: String(closestButton.textContent || '').slice(0, 120),
+                      id: closestButton.id || '',
+                      className: String(closestButton.className || '')
+                    } : null,
+                    closestIframe: closestIframe ? {
+                      src: closestIframe.src || '',
+                      id: closestIframe.id || '',
+                      className: String(closestIframe.className || ''),
+                      title: closestIframe.title || ''
+                    } : null
+                  }));
+                } catch (e) {}
+              }, true);
+            });
+
             // Intercept standard click links
             document.addEventListener('click', function(event) {
               const link = event.target && event.target.closest ? event.target.closest('a') : null;
@@ -551,6 +665,89 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             setLoading(false);
             isWebViewLoadedRef.current = true;
             injectAuthToken();
+
+            // Run explicit post-load DOM diagnostics
+            setTimeout(() => {
+              const diagnosticJs = `
+                (function() {
+                  try {
+                    const payload = {
+                      href: window.location.href,
+                      iframes: [],
+                      links: [],
+                      buttons: [],
+                      authElements: []
+                    };
+                    document.querySelectorAll('iframe').forEach(function(iframe) {
+                      const rect = iframe.getBoundingClientRect();
+                      payload.iframes.push({
+                        src: iframe.src || iframe.getAttribute('src') || '',
+                        id: iframe.id || '',
+                        className: String(iframe.className || ''),
+                        title: iframe.title || '',
+                        width: rect.width,
+                        height: rect.height
+                      });
+                    });
+                    document.querySelectorAll('a').forEach(function(a) {
+                      const href = a.href || a.getAttribute('href') || '';
+                      const text = String(a.textContent || '').trim().slice(0, 100);
+                      if (href || text) {
+                        payload.links.push({
+                          href: href,
+                          target: a.target || '',
+                          text: text,
+                          id: a.id || '',
+                          className: String(a.className || '')
+                        });
+                      }
+                    });
+                    document.querySelectorAll('button').forEach(function(b) {
+                      const rect = b.getBoundingClientRect();
+                      payload.buttons.push({
+                        text: String(b.textContent || '').trim().slice(0, 100),
+                        id: b.id || '',
+                        className: String(b.className || ''),
+                        width: rect.width,
+                        height: rect.height
+                      });
+                    });
+                    const searchTerms = ['войти', 'telegram', 'login', 'sign in'];
+                    const allElements = document.querySelectorAll('div, span, p, a, button, h1, h2, h3, h4, h5, h6, label');
+                    allElements.forEach(function(el) {
+                      const text = String(el.textContent || '').trim().toLowerCase();
+                      if (text && searchTerms.some(term => text.includes(term))) {
+                        if (el.children.length <= 5) {
+                          const rect = el.getBoundingClientRect();
+                          payload.authElements.push({
+                            tagName: el.tagName,
+                            text: String(el.textContent || '').trim().slice(0, 100),
+                            id: el.id || '',
+                            className: String(el.className || ''),
+                            width: rect.width,
+                            height: rect.height
+                          });
+                        }
+                      }
+                    });
+                    payload.links = payload.links.slice(0, 50);
+                    payload.buttons = payload.buttons.slice(0, 30);
+                    payload.authElements = payload.authElements.slice(0, 30);
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                      type: 'DOM_AUTH_DIAGNOSTIC',
+                      payload: payload
+                    }));
+                  } catch (e) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                      type: 'DOM_AUTH_DIAGNOSTIC_ERROR',
+                      error: String(e.message)
+                    }));
+                  }
+                })();
+                true;
+              `;
+              webViewRef.current?.injectJavaScript(diagnosticJs);
+            }, 1000);
         }}
         onHttpError={(event) => {
           console.log('[WebView] http error:', JSON.stringify(event.nativeEvent));
