@@ -407,19 +407,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         domStorageEnabled={true}
         javaScriptEnabled={true}
         onOpenWindow={handleOpenWindow}
-        originWhitelist={[
-          'https://gorodapp.ru/*',
-          'https://*.gorodapp.ru/*',
-          'https://oauth.telegram.org/*',
-          'https://t.me/*',
-          'https://www.t.me/*',
-          'https://telegram.me/*',
-          'https://www.telegram.me/*',
-          'tg://*',
-          'about:blank',
-          'data:*',
-          'blob:*'
-        ]}
+        originWhitelist={['*']}
         webviewDebuggingEnabled={true}
         injectedJavaScriptBeforeContentLoaded={`
           (function() {
@@ -851,19 +839,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               thirdPartyCookiesEnabled={true}
               setSupportMultipleWindows={false}
               javaScriptCanOpenWindowsAutomatically={true}
-              originWhitelist={[
-                'https://gorodapp.ru/*',
-                'https://*.gorodapp.ru/*',
-                'https://oauth.telegram.org/*',
-                'https://t.me/*',
-                'https://www.t.me/*',
-                'https://telegram.me/*',
-                'https://www.telegram.me/*',
-                'tg://*',
-                'about:blank',
-                'data:*',
-                'blob:*'
-              ]}
+              originWhitelist={['*']}
               onNavigationStateChange={(navState) => {
                 const url = navState.url || '';
                 console.log('[AuthWebView] navigation:', url);
