@@ -36,6 +36,20 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const isWebViewLoadedRef = useRef(false);
   const hasSentAuthTokenRef = useRef(false);
 
+  const openInternalUrl = (nextUrl: string) => {
+    if (nextUrl === currentUrl) {
+      console.log('[WebView] reloading current URL:', nextUrl);
+      setLoading(true);
+      setHasError(false);
+      webViewRef.current?.reload();
+    } else {
+      console.log('[WebView] setting current URL:', nextUrl);
+      setCurrentUrl(nextUrl);
+      setLoading(true);
+      setHasError(false);
+    }
+  };
+
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearLoadingTimeout = () => {
@@ -159,6 +173,15 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           setAuthUrl(data.url);
           setIsAuthModalVisible(true);
           return;
+        }
+        if (data.type === 'WEB_WINDOW_OPEN_INTERNAL' && data.url) {
+          const nextUrl = String(data.url);
+          const hostname = getHostname(nextUrl);
+          if (hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru')) {
+            console.log('[WebView] window.open internal gorod:', nextUrl);
+            openInternalUrl(nextUrl);
+            return;
+          }
         }
         if (data.type === 'WEB_WINDOW_OPEN' && data.url) {
           console.log('[WebView message] WEB_WINDOW_OPEN:', data.url);
@@ -304,9 +327,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     }
 
     // If it is gorodapp.ru, open inside WebView
-    if (targetUrl.startsWith('https://gorodapp.ru/') || targetUrl.includes('gorodapp.ru')) {
+    const hostname = getHostname(targetUrl);
+    if (hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru')) {
       console.log('[WebView] open window internal gorod:', targetUrl);
-      setCurrentUrl(targetUrl);
+      openInternalUrl(targetUrl);
       return;
     }
 
@@ -451,6 +475,24 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   url: targetUrl,
                   target: String(target || '')
                 }));
+                let absoluteUrl = targetUrl;
+                try {
+                  absoluteUrl = new URL(targetUrl, window.location.href).href;
+                } catch (e) {}
+
+                let isInternalGorod = false;
+                try {
+                  const host = new URL(absoluteUrl).hostname;
+                  isInternalGorod = (host === 'gorodapp.ru' || host.endsWith('.gorodapp.ru'));
+                } catch (e) {}
+
+                if (isInternalGorod) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_WINDOW_OPEN_INTERNAL',
+                    url: absoluteUrl
+                  }));
+                  return null;
+                }
                 if (targetUrl.indexOf('https://oauth.telegram.org/') === 0) {
                   window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'TELEGRAM_OAUTH_OPEN',
@@ -830,13 +872,14 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   loading: navState.loading,
                   title: navState.title,
                 }));
-                if (url.startsWith('https://gorodapp.ru')) {
-                  console.log('[AuthWebView] returned to gorodapp:', url);
-                  console.log('[AuthWebView] close and reload main webview');
+                const hostname = getHostname(url);
+                if (hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru')) {
+                  console.log('[AuthWebView] returned to internal gorodapp:', url);
+                  console.log('[AuthWebView] close and open in main webview');
                   setIsAuthModalVisible(false);
                   setAuthUrl(null);
                   setTimeout(() => {
-                    webViewRef.current?.reload();
+                    openInternalUrl(url);
                   }, 300);
                 }
               }}
@@ -850,11 +893,19 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 ) {
                   return true;
                 }
-                if (
-                  url.startsWith('https://oauth.telegram.org') ||
-                  url.startsWith('https://gorodapp.ru')
-                ) {
+                const authHostname = getHostname(url);
+                const isInternalAuthGorod = authHostname === 'gorodapp.ru' || authHostname.endsWith('.gorodapp.ru');
+                if (url.startsWith('https://oauth.telegram.org')) {
                   return true;
+                }
+                if (isInternalAuthGorod) {
+                  console.log('[AuthWebView] intercept loading internal URL in modal, open in main:', url);
+                  setIsAuthModalVisible(false);
+                  setAuthUrl(null);
+                  setTimeout(() => {
+                    openInternalUrl(url);
+                  }, 300);
+                  return false;
                 }
                 if (
                   url.startsWith('tg://')
@@ -910,18 +961,30 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   window.open = function(url, target, features) {
                     try {
                       const targetUrl = String(url || '');
+                      let absoluteUrl = targetUrl;
+                      try {
+                        absoluteUrl = new URL(targetUrl, window.location.href).href;
+                      } catch (e) {}
+
                       window.ReactNativeWebView.postMessage(JSON.stringify({
                         type: 'AUTH_WINDOW_OPEN',
-                        url: targetUrl,
+                        url: absoluteUrl,
                         target: String(target || '')
                       }));
+
+                      let isInternalGorod = false;
+                      try {
+                        const host = new URL(absoluteUrl).hostname;
+                        isInternalGorod = (host === 'gorodapp.ru' || host.endsWith('.gorodapp.ru'));
+                      } catch (e) {}
+
                       if (
                         targetUrl.indexOf('https://oauth.telegram.org') === 0 ||
                         targetUrl.indexOf('https://t.me') === 0 ||
                         targetUrl.indexOf('https://www.t.me') === 0 ||
                         targetUrl.indexOf('https://telegram.me') === 0 ||
                         targetUrl.indexOf('https://www.telegram.me') === 0 ||
-                        targetUrl.indexOf('https://gorodapp.ru') === 0
+                        isInternalGorod
                       ) {
                         return null;
                       }
@@ -937,13 +1000,22 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   console.log('[AuthWebView message]', JSON.stringify(data));
                   if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
                     const url = String(data.url);
-                    if (
+                    const hostname = getHostname(url);
+                    const isInternalGorod = hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru');
+                    
+                    if (isInternalGorod) {
+                      console.log('[AuthWebView] window.open internal gorodapp URL inside auth modal, closing auth modal and opening in main webview:', url);
+                      setIsAuthModalVisible(false);
+                      setAuthUrl(null);
+                      setTimeout(() => {
+                        openInternalUrl(url);
+                      }, 300);
+                    } else if (
                       url.startsWith('https://oauth.telegram.org') ||
                       url.startsWith('https://t.me') ||
                       url.startsWith('https://www.t.me') ||
                       url.startsWith('https://telegram.me') ||
-                      url.startsWith('https://www.telegram.me') ||
-                      url.startsWith('https://gorodapp.ru')
+                      url.startsWith('https://www.telegram.me')
                     ) {
                       console.log('[AuthWebView] set auth url from window.open:', url);
                       setAuthUrl(url);
