@@ -190,9 +190,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           return;
         }
         if (data.type === 'WEB_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
-          console.log('[WebView message] WEB_WINDOW_OPEN_FIREBASE_AUTH:', data.url);
-          setAuthUrl(String(data.url));
-          setIsAuthModalVisible(true);
+          console.log('[WebView message] ignore Firebase auth helper popup:', data.url);
           return;
         }
         if (data.type === 'WEB_WINDOW_OPEN_INTERNAL' && data.url) {
@@ -345,9 +343,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     if (!targetUrl) return;
 
     if (isFirebaseAuthHelperUrl(targetUrl)) {
-      console.log('[WebView] open Firebase auth helper in auth modal:', targetUrl);
-      setAuthUrl(targetUrl);
-      setIsAuthModalVisible(true);
+      console.log('[WebView] ignore Firebase auth helper popup:', targetUrl);
       return;
     }
 
@@ -508,10 +504,17 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 } catch (e) {}
 
                 if (isFirebaseAuthHelper) {
-                  window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'WEB_WINDOW_OPEN_FIREBASE_AUTH',
-                    url: absoluteUrl
-                  }));
+                  try {
+                    var iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = absoluteUrl;
+                    document.documentElement.appendChild(iframe);
+                  } catch (e) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                      type: 'WEB_WINDOW_OPEN_FIREBASE_AUTH',
+                      url: absoluteUrl
+                    }));
+                  }
                   return null;
                 }
 
@@ -962,8 +965,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 const targetUrl = event.nativeEvent.targetUrl;
                 console.log('[AuthWebView] open window:', targetUrl);
                 if (targetUrl && isFirebaseAuthHelperUrl(targetUrl)) {
-                  console.log('[AuthWebView] open Firebase auth helper inside modal:', targetUrl);
-                  setAuthUrl(targetUrl);
+                  console.log('[AuthWebView] ignore Firebase auth helper popup:', targetUrl);
                   return;
                 }
                 if (targetUrl?.startsWith('https://oauth.telegram.org')) {
@@ -1005,10 +1007,17 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                       } catch (e) {}
 
                       if (isFirebaseAuthHelper) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                          type: 'AUTH_WINDOW_OPEN_FIREBASE_AUTH',
-                          url: absoluteUrl
-                        }));
+                        try {
+                          var iframe = document.createElement('iframe');
+                          iframe.style.display = 'none';
+                          iframe.src = absoluteUrl;
+                          document.documentElement.appendChild(iframe);
+                        } catch (e) {
+                          window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'AUTH_WINDOW_OPEN_FIREBASE_AUTH',
+                            url: absoluteUrl
+                          }));
+                        }
                         return null;
                       }
 
@@ -1045,8 +1054,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   const data = JSON.parse(event.nativeEvent.data);
                   console.log('[AuthWebView message]', JSON.stringify(data));
                   if (data.type === 'AUTH_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
-                    console.log('[AuthWebView] set Firebase auth helper url:', data.url);
-                    setAuthUrl(String(data.url));
+                    console.log('[AuthWebView] ignore Firebase auth helper popup:', data.url);
                     return;
                   }
                   if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
