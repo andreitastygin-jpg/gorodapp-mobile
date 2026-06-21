@@ -8,6 +8,21 @@ import { useIsFocused } from '@react-navigation/native';
 // Global variable to keep track of the previously visited URL to calculate tab transitions
 let lastActiveUrlGlobal: string = 'https://gorodapp.ru?tab=event';
 
+const FIREBASE_AUTH_DOMAIN =
+  process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'gorod-bdd74.firebaseapp.com';
+
+const isFirebaseAuthHelperUrl = (urlStr: string): boolean => {
+  try {
+    const parsed = new URL(urlStr);
+    return (
+      parsed.hostname === FIREBASE_AUTH_DOMAIN &&
+      parsed.pathname.startsWith('/__/auth/')
+    );
+  } catch {
+    return false;
+  }
+};
+
 interface AppWebViewProps {
   url: string;
   pendingAuthCustomToken?: string | null;
@@ -174,6 +189,12 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           setIsAuthModalVisible(true);
           return;
         }
+        if (data.type === 'WEB_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
+          console.log('[WebView message] WEB_WINDOW_OPEN_FIREBASE_AUTH:', data.url);
+          setAuthUrl(String(data.url));
+          setIsAuthModalVisible(true);
+          return;
+        }
         if (data.type === 'WEB_WINDOW_OPEN_INTERNAL' && data.url) {
           const nextUrl = String(data.url);
           const hostname = getHostname(nextUrl);
@@ -289,6 +310,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
       return false;
     }
 
+    if (isFirebaseAuthHelperUrl(targetUrl)) {
+      console.log('[WebView] allow Firebase auth helper:', targetUrl);
+      return true;
+    }
+
     // 4. Any other http/https external link: open in external browser
     if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
       console.log('[WebView] open external:', targetUrl);
@@ -317,6 +343,13 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     console.log('[WebView] open window:', targetUrl);
     
     if (!targetUrl) return;
+
+    if (isFirebaseAuthHelperUrl(targetUrl)) {
+      console.log('[WebView] open Firebase auth helper in auth modal:', targetUrl);
+      setAuthUrl(targetUrl);
+      setIsAuthModalVisible(true);
+      return;
+    }
 
     // If it is Telegram OAuth, open inside auth modal
     if (targetUrl.startsWith('https://oauth.telegram.org/')) {
@@ -467,6 +500,20 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 try {
                   absoluteUrl = new URL(targetUrl, window.location.href).href;
                 } catch (e) {}
+
+                let isFirebaseAuthHelper = false;
+                try {
+                  const parsedUrl = new URL(absoluteUrl);
+                  isFirebaseAuthHelper = (parsedUrl.hostname === '${FIREBASE_AUTH_DOMAIN}' && parsedUrl.pathname.indexOf('/__/auth/') === 0);
+                } catch (e) {}
+
+                if (isFirebaseAuthHelper) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'WEB_WINDOW_OPEN_FIREBASE_AUTH',
+                    url: absoluteUrl
+                  }));
+                  return null;
+                }
 
                 let isInternalGorod = false;
                 try {
@@ -869,6 +916,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 ) {
                   return true;
                 }
+                if (isFirebaseAuthHelperUrl(url)) {
+                  console.log('[AuthWebView] allow Firebase auth helper:', url);
+                  return true;
+                }
                 const authHostname = getHostname(url);
                 const isInternalAuthGorod = authHostname === 'gorodapp.ru' || authHostname.endsWith('.gorodapp.ru');
                 if (url.startsWith('https://oauth.telegram.org')) {
@@ -910,6 +961,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               onOpenWindow={(event) => {
                 const targetUrl = event.nativeEvent.targetUrl;
                 console.log('[AuthWebView] open window:', targetUrl);
+                if (targetUrl && isFirebaseAuthHelperUrl(targetUrl)) {
+                  console.log('[AuthWebView] open Firebase auth helper inside modal:', targetUrl);
+                  setAuthUrl(targetUrl);
+                  return;
+                }
                 if (targetUrl?.startsWith('https://oauth.telegram.org')) {
                   setAuthUrl(targetUrl);
                   return;
@@ -941,6 +997,20 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                       try {
                         absoluteUrl = new URL(targetUrl, window.location.href).href;
                       } catch (e) {}
+
+                      let isFirebaseAuthHelper = false;
+                      try {
+                        const parsedUrl = new URL(absoluteUrl);
+                        isFirebaseAuthHelper = (parsedUrl.hostname === '${FIREBASE_AUTH_DOMAIN}' && parsedUrl.pathname.indexOf('/__/auth/') === 0);
+                      } catch (e) {}
+
+                      if (isFirebaseAuthHelper) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                          type: 'AUTH_WINDOW_OPEN_FIREBASE_AUTH',
+                          url: absoluteUrl
+                        }));
+                        return null;
+                      }
 
                       window.ReactNativeWebView.postMessage(JSON.stringify({
                         type: 'AUTH_WINDOW_OPEN',
@@ -974,6 +1044,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
                   console.log('[AuthWebView message]', JSON.stringify(data));
+                  if (data.type === 'AUTH_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
+                    console.log('[AuthWebView] set Firebase auth helper url:', data.url);
+                    setAuthUrl(String(data.url));
+                    return;
+                  }
                   if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
                     const url = String(data.url);
                     const hostname = getHostname(url);
