@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Platform, Linking, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, Platform, Linking, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ErrorView } from './ui/ErrorView';
@@ -7,6 +7,19 @@ import { useIsFocused } from '@react-navigation/native';
 
 // Global variable to keep track of the previously visited URL to calculate tab transitions
 let lastActiveUrlGlobal: string = 'https://gorodapp.ru?tab=event';
+
+// Safely extracts hostname from a URL without relying on external URL polyfills
+const getHostname = (urlStr: string): string => {
+  try {
+    const match = urlStr.match(/^https?:\/\/([^/?#]+)/i);
+    if (match && match[1]) {
+      return match[1].split(':')[0].toLowerCase();
+    }
+    return '';
+  } catch {
+    return '';
+  }
+};
 
 const FIREBASE_AUTH_DOMAIN =
   process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'gorod-bdd74.firebaseapp.com';
@@ -20,6 +33,48 @@ const isFirebaseAuthHelperUrl = (urlStr: string): boolean => {
     );
   } catch {
     return false;
+  }
+};
+
+const isAllowedTechnicalUrl = (url: string): boolean => {
+  return (
+    url === 'about:blank' ||
+    url.startsWith('about:blank') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:')
+  );
+};
+
+const isInternalGorodUrl = (url: string): boolean => {
+  const hostname = getHostname(url);
+  return hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru');
+};
+
+const isTelegramOAuthUrl = (url: string): boolean => {
+  return url.startsWith('https://oauth.telegram.org/') || url.includes('oauth.telegram.org/auth');
+};
+
+const isTelegramExternalUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      url.startsWith('tg://') ||
+      hostname === 't.me' ||
+      hostname === 'www.t.me' ||
+      hostname.endsWith('.t.me') ||
+      hostname === 'telegram.me' ||
+      hostname === 'www.telegram.me' ||
+      hostname.endsWith('.telegram.me')
+    );
+  } catch {
+    return (
+      url.startsWith('tg://') ||
+      url.includes('://t.me/') ||
+      url.includes('://www.t.me/') ||
+      url.includes('://telegram.me/') ||
+      url.includes('://www.telegram.me/')
+    );
   }
 };
 
@@ -42,6 +97,32 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const [currentUrl, setCurrentUrl] = useState(url);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [isAuthModalVisible, setIsAuthModalVisible] = useState(false);
+
+  const [debugInfo, setDebugInfo] = useState({
+    mainUrl: '',
+    authUrl: '',
+    isAuthModalVisible: false,
+    lastShouldStartUrl: '',
+    lastOpenWindowUrl: '',
+    lastMessageType: '',
+    lastDecision: '',
+    lastError: '',
+  });
+
+  const updateDebug = (partial: Partial<typeof debugInfo>) => {
+    setDebugInfo((prev) => ({
+      ...prev,
+      ...partial,
+    }));
+  };
+
+  useEffect(() => {
+    updateDebug({
+      authUrl: authUrl || '',
+      isAuthModalVisible,
+      mainUrl: currentUrl || '',
+    });
+  }, [authUrl, isAuthModalVisible, currentUrl]);
 
   useEffect(() => {
     setCurrentUrl(url);
@@ -149,6 +230,9 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     try {
       data = JSON.parse(event.nativeEvent.data);
       console.log('[WebView message]', JSON.stringify(data));
+      if (data && data.type) {
+        updateDebug({ lastMessageType: `Main: ${data.type}` });
+      }
     } catch {
       console.log('[WebView message raw]', event.nativeEvent.data);
     }
@@ -176,10 +260,55 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           return;
         }
         if (data.type === 'TELEGRAM_IFRAME_CLICK' && data.url) {
-          console.log('[WebView message] TELEGRAM_IFRAME_CLICK:', data.url);
-          console.log('[WebView] open auth modal from iframe:', data.url);
-          setAuthUrl(data.url);
-          setIsAuthModalVisible(true);
+          const nextUrl = String(data.url);
+          console.log('[WebView message] TELEGRAM_IFRAME_CLICK:', nextUrl);
+          updateDebug({
+            lastOpenWindowUrl: `Iframe: ${nextUrl.slice(0, 100)}`,
+          });
+
+          if (isFirebaseAuthHelperUrl(nextUrl)) {
+            console.log('[WebView] iframe Firebase helper ignored:', nextUrl);
+            updateDebug({ lastDecision: 'Iframe Firebase helper: ignore' });
+            return;
+          }
+
+          if (isTelegramOAuthUrl(nextUrl)) {
+            console.log('[WebView] iframe Telegram OAuth: open modal:', nextUrl);
+            updateDebug({ lastDecision: 'Iframe Telegram OAuth: open modal' });
+            setAuthUrl(nextUrl);
+            setIsAuthModalVisible(true);
+            return;
+          }
+
+          if (isTelegramExternalUrl(nextUrl)) {
+            console.log('[WebView] iframe Telegram external: open externally:', nextUrl);
+            updateDebug({ lastDecision: 'Iframe Telegram Ext: open externally' });
+            Linking.openURL(nextUrl).catch((err) => {
+              console.warn('[WebView] iframe Telegram external failed:', String(err));
+              updateDebug({ lastError: `Iframe TG external failed: ${String(err)}` });
+            });
+            return;
+          }
+
+          if (isInternalGorodUrl(nextUrl)) {
+            console.log('[WebView] iframe Gorod internal:', nextUrl);
+            updateDebug({ lastDecision: 'Iframe Gorod: open internal' });
+            openInternalUrl(nextUrl);
+            return;
+          }
+
+          if (nextUrl.startsWith('http://') || nextUrl.startsWith('https://')) {
+            console.log('[WebView] iframe external HTTP:', nextUrl);
+            updateDebug({ lastDecision: 'Iframe HTTP: open external' });
+            Linking.openURL(nextUrl).catch((err) => {
+              console.warn('[WebView] iframe external HTTP failed:', String(err));
+              updateDebug({ lastError: `Iframe HTTP failed: ${String(err)}` });
+            });
+            return;
+          }
+
+          console.log('[WebView] iframe unknown URL ignored:', nextUrl);
+          updateDebug({ lastDecision: 'Iframe unknown: ignored' });
           return;
         }
         if (data.type === 'TELEGRAM_OAUTH_OPEN' && data.url) {
@@ -236,103 +365,90 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     }
   };
 
-  // Safely extracts hostname from a URL without relying on external URL polyfills
-  const getHostname = (urlStr: string): string => {
-    try {
-      const match = urlStr.match(/^https?:\/\/([^/?#]+)/i);
-      if (match && match[1]) {
-        return match[1].split(':')[0].toLowerCase();
-      }
-      return '';
-    } catch {
-      return '';
-    }
-  };
-
   const handleShouldStartLoadWithRequest = (request: any): boolean => {
     const targetUrl = request.url;
     console.log('[WebView] should start:', targetUrl);
     if (!targetUrl) return false;
 
-    // 1. Internal special URLs/schemes
-    if (targetUrl === 'about:blank' || targetUrl.startsWith('data:') || targetUrl.startsWith('blob:')) {
-      console.log('[WebView] allow internal:', targetUrl);
+    updateDebug({
+      lastShouldStartUrl: targetUrl.slice(0, 120),
+    });
+
+    // 1. Technical URL
+    if (isAllowedTechnicalUrl(targetUrl)) {
+      console.log('[WebView] allow technical:', targetUrl);
+      updateDebug({ lastDecision: 'Technical: allowed' });
       return true;
     }
 
-    // Intercept Telegram OAuth on the main WebView to keep the main WebView on gorodapp.ru
-    if (targetUrl.startsWith('https://oauth.telegram.org/') || targetUrl.includes('oauth.telegram.org/auth')) {
+    // 2. Firebase Auth Helper
+    if (isFirebaseAuthHelperUrl(targetUrl)) {
+      console.log('[WebView] allow Firebase auth helper:', targetUrl);
+      updateDebug({ lastDecision: 'Firebase Helper: allowed' });
+      return true;
+    }
+
+    // 3. Telegram OAuth -> open in modal
+    if (isTelegramOAuthUrl(targetUrl)) {
       console.log('[WebView] intercept Telegram OAuth:', targetUrl);
-      console.log('[WebView] open auth modal:', targetUrl);
+      updateDebug({ lastDecision: 'Telegram OAuth: open in modal' });
       setAuthUrl(targetUrl);
       setIsAuthModalVisible(true);
       return false;
     }
 
-    // 2. Allowed domains to stay inside the WebView (including Telegram OAuth)
-    const hostname = getHostname(targetUrl);
-    if (
-      hostname === 'gorodapp.ru' ||
-      hostname.endsWith('.gorodapp.ru') ||
-      hostname === 'oauth.telegram.org' ||
-      hostname.endsWith('.oauth.telegram.org') ||
-      hostname === 'storage.yandexcloud.net' ||
-      hostname.endsWith('.yandexcloud.net') ||
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1'
-    ) {
-      console.log('[WebView] allow internal:', targetUrl);
+    // 4. Internal Gorodapp
+    if (isInternalGorodUrl(targetUrl)) {
+      console.log('[WebView] allow internal Gorod:', targetUrl);
+      updateDebug({ lastDecision: 'Internal Gorod: allowed' });
       return true;
     }
 
-    // 3. Explicit check for Telegram Web / App Redirect Links to open them externally
-    if (
-      targetUrl.includes('://t.me/') || 
-      targetUrl.includes('://www.t.me/') ||
-      targetUrl.includes('://telegram.me/') ||
-      targetUrl.includes('://www.telegram.me/')
-    ) {
-      console.log('[WebView] open external:', targetUrl);
+    // 5. Telegram external apps / intents
+    if (isTelegramExternalUrl(targetUrl)) {
+      console.log('[WebView] open Telegram externally:', targetUrl);
+      updateDebug({ lastDecision: 'Telegram Ext: external browser/app' });
       Linking.openURL(targetUrl).catch((err) =>
         console.warn('[WebView] Error opening Telegram URL externally:', targetUrl, err)
       );
       return false;
     }
 
-    // Explicit check for Telegram Deep Links (tg://)
-    if (targetUrl.startsWith('tg:')) {
-      console.log('[WebView] open external:', targetUrl);
-      Linking.openURL(targetUrl).catch((err) =>
-        console.warn('[WebView] Error opening Telegram intent:', targetUrl, err)
-      );
-      return false;
-    }
-
-    if (isFirebaseAuthHelperUrl(targetUrl)) {
-      console.log('[WebView] allow Firebase auth helper:', targetUrl);
+    // 6. Other allowed domains / hosts
+    const hostname = getHostname(targetUrl);
+    if (
+      hostname === 'storage.yandexcloud.net' ||
+      hostname.endsWith('.yandexcloud.net') ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1'
+    ) {
+      console.log('[WebView] allow allowed host:', targetUrl);
+      updateDebug({ lastDecision: 'Allowed Host: allowed' });
       return true;
     }
 
-    // 4. Any other http/https external link: open in external browser
+    // 7. General http/https -> external
     if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
-      console.log('[WebView] open external:', targetUrl);
+      console.log('[WebView] open external HTTP/HTTPS:', targetUrl);
+      updateDebug({ lastDecision: 'External HTTP: browser' });
       Linking.openURL(targetUrl).catch((err) =>
         console.warn('[WebView] Error redirecting external link to browser:', targetUrl, err)
       );
       return false;
     }
 
-    // 5. Non-http schemes (e.g., tel, mailto, sms, bank etc.) or unknown schemes
-    console.log('[WebView] block unknown:', targetUrl);
+    // 8. Custom native schemes etc
+    console.log('[WebView] handling native scheme:', targetUrl);
+    updateDebug({ lastDecision: 'Native scheme: check/open' });
     Linking.canOpenURL(targetUrl)
       .then((supported) => {
         if (supported) {
           Linking.openURL(targetUrl);
         } else {
-          console.warn('[WebView] Blocked unsupported non-http scheme:', targetUrl);
+          console.warn('[WebView] Unsupported native scheme:', targetUrl);
         }
       })
-      .catch((err) => console.error('[WebView] Error checking URI scheme support:', err));
+      .catch((err) => console.error('[WebView] Error checking native scheme:', err));
     return false;
   };
 
@@ -342,44 +458,34 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     
     if (!targetUrl) return;
 
+    updateDebug({
+      lastOpenWindowUrl: targetUrl.slice(0, 120),
+    });
+
     if (isFirebaseAuthHelperUrl(targetUrl)) {
       console.log('[WebView] ignore Firebase auth helper popup:', targetUrl);
+      updateDebug({ lastDecision: 'OpenWindow Firebase Helper: ignore' });
       return;
     }
 
-    // If it is Telegram OAuth, open inside auth modal
-    if (targetUrl.startsWith('https://oauth.telegram.org/')) {
+    if (isTelegramOAuthUrl(targetUrl)) {
       console.log('[WebView] open window internal oauth:', targetUrl);
+      updateDebug({ lastDecision: 'OpenWindow Telegram OAuth: open modal' });
       setAuthUrl(targetUrl);
       setIsAuthModalVisible(true);
       return;
     }
 
-    // If it is gorodapp.ru, open inside WebView
-    const hostname = getHostname(targetUrl);
-    if (hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru')) {
+    if (isInternalGorodUrl(targetUrl)) {
       console.log('[WebView] open window internal gorod:', targetUrl);
+      updateDebug({ lastDecision: 'OpenWindow Internal Gorod: load internal' });
       openInternalUrl(targetUrl);
       return;
     }
 
-    // tg:// can open externally
-    if (targetUrl.startsWith('tg:')) {
-      console.log('[WebView] open window external tg:', targetUrl);
-      Linking.openURL(targetUrl).catch((err) => {
-        console.warn('[WebView] open window tg failed:', String(err));
-      });
-      return;
-    }
-
-    // t.me / telegram.me externally
-    if (
-      targetUrl.includes('://t.me/') ||
-      targetUrl.includes('://www.t.me/') ||
-      targetUrl.includes('://telegram.me/') ||
-      targetUrl.includes('://www.telegram.me/')
-    ) {
+    if (isTelegramExternalUrl(targetUrl)) {
       console.log('[WebView] open window external telegram link:', targetUrl);
+      updateDebug({ lastDecision: 'OpenWindow Telegram Ext: open externally' });
       Linking.openURL(targetUrl).catch((err) => {
         console.warn('[WebView] open window telegram link failed:', String(err));
       });
@@ -387,6 +493,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     }
 
     console.log('[WebView] open window external other:', targetUrl);
+    updateDebug({ lastDecision: 'OpenWindow Other Ext: open externally' });
     Linking.openURL(targetUrl).catch((err) => {
       console.warn('[WebView] open window external failed:', String(err));
     });
@@ -673,59 +780,26 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               subtree: true
             });
 
-            // Setup Telegram iframe overlay detection and positioning
-            function setupTelegramIframeOverlay() {
+            // Setup Telegram iframe detection and reporting without any overlays
+            function reportTelegramIframes() {
               const iframes = document.querySelectorAll('iframe[src*="oauth.telegram.org"], iframe[src*="telegram.org"]');
               iframes.forEach(function(iframe) {
-                if (iframe.getAttribute('data-gorod-telegram-overlay') === 'true') {
+                if (iframe.getAttribute('data-gorod-telegram-reported') === 'true') {
                   return;
                 }
-                iframe.setAttribute('data-gorod-telegram-overlay', 'true');
+                iframe.setAttribute('data-gorod-telegram-reported', 'true');
                 const iframeSrc = iframe.getAttribute('src') || iframe.src;
-                
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                   type: 'TELEGRAM_IFRAME_FOUND',
                   url: iframeSrc
                 }));
-
-                const parent = iframe.parentNode;
-                if (parent) {
-                  const parentStyle = window.getComputedStyle(parent);
-                  if (parentStyle.position === 'static') {
-                    parent.style.position = 'relative';
-                  }
-                  
-                  const overlay = document.createElement('div');
-                  overlay.style.position = 'absolute';
-                  overlay.style.top = iframe.offsetTop + 'px';
-                  overlay.style.left = iframe.offsetLeft + 'px';
-                  overlay.style.width = (iframe.offsetWidth || 200) + 'px';
-                  overlay.style.height = (iframe.offsetHeight || 40) + 'px';
-                  overlay.style.zIndex = '999999';
-                  overlay.style.cursor = 'pointer';
-                  overlay.style.background = 'rgba(0,0,0,0)';
-                  overlay.className = 'telegram-iframe-click-overlay';
-                  
-                  overlay.addEventListener('click', function(e) {
-                    console.log('[Overlay] Clicked overlay on Telegram iframe:', iframeSrc);
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                      type: 'TELEGRAM_IFRAME_CLICK',
-                      url: iframeSrc
-                    }));
-                  }, true);
-                  
-                  parent.appendChild(overlay);
-                  console.log('[Overlay Setup] Overlay created for:', iframeSrc);
-                }
               });
             }
-            setupTelegramIframeOverlay();
+            reportTelegramIframes();
 
-            // Observe DOM changes to dynamically inject overlays for newly loaded Telegram iframes
+            // Observe DOM changes to dynamically report newly loaded Telegram iframes
             new MutationObserver(function() {
-              setupTelegramIframeOverlay();
+              reportTelegramIframes();
             }).observe(document.documentElement, {
               childList: true,
               subtree: true
@@ -831,12 +905,14 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         }}
         onHttpError={(event) => {
           console.log('[WebView] http error:', JSON.stringify(event.nativeEvent));
+          updateDebug({ lastError: `Main HTTP error: status ${event.nativeEvent.statusCode}` });
           clearLoadingTimeout();
           setLoading(false);
           setHasError(true);
         }}
         onError={(event) => {
           console.log('[WebView] error:', JSON.stringify(event.nativeEvent));
+          updateDebug({ lastError: `Main Error: ${event.nativeEvent.description || 'unknown'}` });
           clearLoadingTimeout();
           setLoading(false);
           setHasError(true);
@@ -898,10 +974,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   loading: navState.loading,
                   title: navState.title,
                 }));
-                const hostname = getHostname(url);
-                if (hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru')) {
+                updateDebug({ lastDecision: `Auth Nav: ${url.slice(0, 80)}` });
+                
+                if (isInternalGorodUrl(url)) {
                   console.log('[AuthWebView] returned to internal gorodapp:', url);
-                  console.log('[AuthWebView] close and open in main webview');
+                  updateDebug({ lastDecision: 'Auth Nav Gorod: closing modal & load main' });
                   setIsAuthModalVisible(false);
                   setAuthUrl(null);
                   setTimeout(() => {
@@ -912,24 +989,29 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               onShouldStartLoadWithRequest={(request) => {
                 const url = request.url || '';
                 console.log('[AuthWebView] should start:', url);
-                if (
-                  url.startsWith('about:blank') ||
-                  url.startsWith('data:') ||
-                  url.startsWith('blob:')
-                ) {
+                updateDebug({ lastShouldStartUrl: `Auth: ${url.slice(0, 80)}` });
+
+                if (isAllowedTechnicalUrl(url)) {
+                  console.log('[AuthWebView] allow technical:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: technical allowed' });
                   return true;
                 }
+
                 if (isFirebaseAuthHelperUrl(url)) {
                   console.log('[AuthWebView] allow Firebase auth helper:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: Firebase helper allowed' });
                   return true;
                 }
-                const authHostname = getHostname(url);
-                const isInternalAuthGorod = authHostname === 'gorodapp.ru' || authHostname.endsWith('.gorodapp.ru');
-                if (url.startsWith('https://oauth.telegram.org')) {
+
+                if (isTelegramOAuthUrl(url)) {
+                  console.log('[AuthWebView] allow Telegram OAuth:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: Telegram OAuth allowed' });
                   return true;
                 }
-                if (isInternalAuthGorod) {
-                  console.log('[AuthWebView] intercept loading internal URL in modal, open in main:', url);
+
+                if (isInternalGorodUrl(url)) {
+                  console.log('[AuthWebView] returned to internal gorodapp:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: Gorod internal closing modal' });
                   setIsAuthModalVisible(false);
                   setAuthUrl(null);
                   setTimeout(() => {
@@ -937,57 +1019,84 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   }, 300);
                   return false;
                 }
-                if (
-                  url.startsWith('tg://')
-                ) {
-                  console.log('[AuthWebView] open external tg scheme:', url);
+
+                if (isTelegramExternalUrl(url)) {
+                  console.log('[AuthWebView] open external telegram:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: Telegram Ext: open externally' });
                   Linking.openURL(url).catch((err) => {
-                    console.log('[AuthWebView] open external failed:', String(err));
+                    console.log('[AuthWebView] telegram open failed:', String(err));
+                    updateDebug({ lastError: `TG external load failed: ${String(err)}` });
                   });
                   return false;
                 }
-                if (
-                  url.startsWith('https://t.me/') ||
-                  url.startsWith('https://www.t.me/') ||
-                  url.startsWith('https://telegram.me/') ||
-                  url.startsWith('https://www.telegram.me/') ||
-                  url.includes('://t.me/') ||
-                  url.includes('://www.t.me/') ||
-                  url.includes('://telegram.me/') ||
-                  url.includes('://www.telegram.me/')
-                ) {
-                  console.log('[AuthWebView] allow telegram web inside modal:', url);
-                  return true;
+
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                  console.log('[AuthWebView] open general HTTP externally:', url);
+                  updateDebug({ lastDecision: 'Auth shouldStart: HTTP general open externally' });
+                  Linking.openURL(url).catch((err) => {
+                    console.log('[AuthWebView] general HTTP open failed:', String(err));
+                  });
+                  return false;
                 }
-                return true;
+
+                return false;
               }}
               onOpenWindow={(event) => {
                 const targetUrl = event.nativeEvent.targetUrl;
                 console.log('[AuthWebView] open window:', targetUrl);
-                if (targetUrl && isFirebaseAuthHelperUrl(targetUrl)) {
+                if (!targetUrl) return;
+
+                updateDebug({ lastOpenWindowUrl: `Auth: ${targetUrl.slice(0, 100)}` });
+
+                if (isFirebaseAuthHelperUrl(targetUrl)) {
                   console.log('[AuthWebView] ignore Firebase auth helper popup:', targetUrl);
+                  updateDebug({ lastDecision: 'Auth OpenWindow Firebase: ignore' });
                   return;
                 }
-                if (targetUrl?.startsWith('https://oauth.telegram.org')) {
+
+                if (isTelegramOAuthUrl(targetUrl)) {
+                  console.log('[AuthWebView] set auth url for Telegram OAuth window.open:', targetUrl);
+                  updateDebug({ lastDecision: 'Auth OpenWindow Telegram OAuth: load inside' });
                   setAuthUrl(targetUrl);
                   return;
                 }
-                if (
-                  targetUrl?.startsWith('https://t.me') ||
-                  targetUrl?.startsWith('https://www.t.me') ||
-                  targetUrl?.startsWith('https://telegram.me') ||
-                  targetUrl?.startsWith('https://www.telegram.me')
-                ) {
-                  console.log('[AuthWebView] open window internal telegram web:', targetUrl);
-                  setAuthUrl(targetUrl);
+
+                if (isInternalGorodUrl(targetUrl)) {
+                  console.log('[AuthWebView] returned to internal gorodapp from openWindow:', targetUrl);
+                  updateDebug({ lastDecision: 'Auth OpenWindow Gorod: closing modal & load main' });
+                  setIsAuthModalVisible(false);
+                  setAuthUrl(null);
+                  setTimeout(() => {
+                    openInternalUrl(targetUrl);
+                  }, 300);
                   return;
                 }
-                if (targetUrl?.startsWith('tg://')) {
+
+                if (isTelegramExternalUrl(targetUrl)) {
+                  console.log('[AuthWebView] open external telegram link from openWindow:', targetUrl);
+                  updateDebug({ lastDecision: 'Auth OpenWindow Telegram Ext: open externally' });
                   Linking.openURL(targetUrl).catch((err) => {
-                    console.log('[AuthWebView] tg open failed:', String(err));
+                    console.log('[AuthWebView] telegram open failed:', String(err));
                   });
                   return;
                 }
+
+                if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+                  console.log('[AuthWebView] open window HTTP externally:', targetUrl);
+                  updateDebug({ lastDecision: 'Auth OpenWindow HTTP: open externally' });
+                  Linking.openURL(targetUrl).catch((err) => {
+                    console.log('[AuthWebView] open window failed:', String(err));
+                  });
+                  return;
+                }
+              }}
+              onHttpError={(event) => {
+                console.log('[AuthWebView] HTTP error:', JSON.stringify(event.nativeEvent));
+                updateDebug({ lastError: `Auth HTTP Error: Status ${event.nativeEvent.statusCode}` });
+              }}
+              onError={(event) => {
+                console.log('[AuthWebView] error:', JSON.stringify(event.nativeEvent));
+                updateDebug({ lastError: `Auth Error: ${event.nativeEvent.description || 'unknown'}` });
               }}
               injectedJavaScriptBeforeContentLoaded={`
                 (function() {
@@ -1053,31 +1162,60 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
                   console.log('[AuthWebView message]', JSON.stringify(data));
+                  if (data && data.type) {
+                    updateDebug({ lastMessageType: `Auth: ${data.type}` });
+                  }
+
                   if (data.type === 'AUTH_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
                     console.log('[AuthWebView] ignore Firebase auth helper popup:', data.url);
+                    updateDebug({ lastDecision: 'Auth Msg Firebase Helper: ignore' });
                     return;
                   }
+
                   if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
                     const url = String(data.url);
-                    const hostname = getHostname(url);
-                    const isInternalGorod = hostname === 'gorodapp.ru' || hostname.endsWith('.gorodapp.ru');
-                    
-                    if (isInternalGorod) {
-                      console.log('[AuthWebView] window.open internal gorodapp URL inside auth modal, closing auth modal and opening in main webview:', url);
+                    updateDebug({ lastOpenWindowUrl: `Auth Msg: ${url.slice(0, 80)}` });
+
+                    if (isFirebaseAuthHelperUrl(url)) {
+                      console.log('[AuthWebView] ignore Firebase auth helper popup inside message:', url);
+                      updateDebug({ lastDecision: 'Auth Msg Firebase helper inside AUTH_WINDOW_OPEN: ignore' });
+                      return;
+                    }
+
+                    if (isTelegramOAuthUrl(url)) {
+                      console.log('[AuthWebView] load Telegram OAuth from window.open:', url);
+                      updateDebug({ lastDecision: 'Auth Msg Telegram OAuth: load inside' });
+                      setAuthUrl(url);
+                      return;
+                    }
+
+                    if (isInternalGorodUrl(url)) {
+                      console.log('[AuthWebView] returned to internal gorodapp from message:', url);
+                      updateDebug({ lastDecision: 'Auth Msg Gorod: close modal & load main' });
                       setIsAuthModalVisible(false);
                       setAuthUrl(null);
                       setTimeout(() => {
                         openInternalUrl(url);
                       }, 300);
-                    } else if (
-                      url.startsWith('https://oauth.telegram.org') ||
-                      url.startsWith('https://t.me') ||
-                      url.startsWith('https://www.t.me') ||
-                      url.startsWith('https://telegram.me') ||
-                      url.startsWith('https://www.telegram.me')
-                    ) {
-                      console.log('[AuthWebView] set auth url from window.open:', url);
-                      setAuthUrl(url);
+                      return;
+                    }
+
+                    if (isTelegramExternalUrl(url)) {
+                      console.log('[AuthWebView] open external telegram link from message:', url);
+                      updateDebug({ lastDecision: 'Auth Msg Telegram Ext: open externally' });
+                      Linking.openURL(url).catch((err) => {
+                        console.log('[AuthWebView] telegram open failed:', String(err));
+                      });
+                      return;
+                    }
+
+                    if (url.startsWith('http://') || url.startsWith('https://')) {
+                      console.log('[AuthWebView] open message HTTP externally:', url);
+                      updateDebug({ lastDecision: 'Auth Msg HTTP: open externally' });
+                      Linking.openURL(url).catch((err) => {
+                        console.log('[AuthWebView] message open failed:', String(err));
+                      });
+                      return;
                     }
                   }
                 } catch (err) {
@@ -1086,8 +1224,64 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               }}
             />
           ) : null}
+
+          {/* Temporary Debug Overlay inside Modal */}
+          <View style={styles.debugOverlay} pointerEvents="none">
+            <Text style={styles.debugText} numberOfLines={1}>
+              mainUrl: {debugInfo.mainUrl ? debugInfo.mainUrl.slice(0, 120) : 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              authUrl: {debugInfo.authUrl ? debugInfo.authUrl.slice(0, 120) : 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              isAuthModalVisible: {debugInfo.isAuthModalVisible ? 'true' : 'false'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              lastShouldStartUrl: {debugInfo.lastShouldStartUrl ? debugInfo.lastShouldStartUrl.slice(0, 120) : 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              lastOpenWindowUrl: {debugInfo.lastOpenWindowUrl ? debugInfo.lastOpenWindowUrl.slice(0, 120) : 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              lastMessageType: {debugInfo.lastMessageType || 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              lastDecision: {debugInfo.lastDecision || 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              lastError: {debugInfo.lastError || 'none'}
+            </Text>
+          </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Temporary Debug Overlay */}
+      <View style={styles.debugOverlay} pointerEvents="none">
+        <Text style={styles.debugText} numberOfLines={1}>
+          mainUrl: {debugInfo.mainUrl ? debugInfo.mainUrl.slice(0, 120) : 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          authUrl: {debugInfo.authUrl ? debugInfo.authUrl.slice(0, 120) : 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          isAuthModalVisible: {debugInfo.isAuthModalVisible ? 'true' : 'false'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          lastShouldStartUrl: {debugInfo.lastShouldStartUrl ? debugInfo.lastShouldStartUrl.slice(0, 120) : 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          lastOpenWindowUrl: {debugInfo.lastOpenWindowUrl ? debugInfo.lastOpenWindowUrl.slice(0, 120) : 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          lastMessageType: {debugInfo.lastMessageType || 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          lastDecision: {debugInfo.lastDecision || 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          lastError: {debugInfo.lastError || 'none'}
+        </Text>
+      </View>
     </View>
   );
 };
@@ -1115,6 +1309,21 @@ const styles = StyleSheet.create({
   errorContainer: {
     ...StyleSheet.absoluteFill,
     backgroundColor: '#ffffff',
+  },
+  debugOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.80)',
+    padding: 8,
+    zIndex: 9999,
+  },
+  debugText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginBottom: 2,
   }
 });
 
