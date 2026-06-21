@@ -1,8 +1,18 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { initializeAuth, getAuth } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { FirebaseApp } from 'firebase/app';
 import type { Firestore } from 'firebase/firestore';
-import type { Auth } from 'firebase/auth';
+import type { Auth, Persistence } from 'firebase/auth';
+
+// Declare module augmentation to add getReactNativePersistence safely without @ts-ignore
+declare module 'firebase/auth' {
+  export function getReactNativePersistence(storage: any): Persistence;
+}
+
+import { getReactNativePersistence } from 'firebase/auth';
+
 
 // Firebase configuration structure
 const firebaseConfig = {
@@ -37,12 +47,31 @@ if (!isConfigValid) {
     if (firebaseApp) {
       db = getFirestore(firebaseApp);
       
-      // Важно:
-      // Firebase Auth временно НЕ инициализируем на старте приложения,
-      // потому что в Android APK он даёт runtime error:
-      // "Component auth has not been registered yet".
-      // Auth будет подключён отдельно лениво в процессе Telegram login.
-      auth = null;
+      try {
+        // Safe Firebase Auth initialization for React Native/Expo using AsyncStorage
+        auth = initializeAuth(firebaseApp, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+        console.log('[FirebaseAuth] initialized with React Native persistence');
+      } catch (authError) {
+        // Handle double initialization gracefully, e.g. during Hot Module Replacement (HMR)
+        try {
+          auth = getAuth(firebaseApp);
+          console.log('[FirebaseAuth] retrieved existing auth instance');
+        } catch (getAuthError) {
+          console.log('[FirebaseAuth] Error getting/initializing auth:', authError);
+        }
+      }
+
+      if (auth) {
+        auth.onAuthStateChanged((user) => {
+          if (user) {
+            console.log('[FirebaseAuth] currentUser exists');
+          } else {
+            console.log('[FirebaseAuth] currentUser is null');
+          }
+        });
+      }
     }
   } catch (err) {
     firebaseConfigError = err instanceof Error ? err.message : String(err);
@@ -50,3 +79,4 @@ if (!isConfigValid) {
 }
 
 export { firebaseApp as app, db, auth, firebaseConfigError };
+

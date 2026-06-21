@@ -1,11 +1,11 @@
 import React from 'react';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
-import { AppWebView } from '../components/AppWebView';
 import { useAuthStore } from '../store/useAuthStore';
 import { AuthScreen } from './AuthScreen';
+import { ProfileStackNavigator } from './profile/ProfileStackNavigator';
 
 export const ProfileScreen: React.FC = () => {
-  const { userId, pendingWebViewCustomToken, setPendingWebViewCustomToken } = useAuthStore();
+  const { userId } = useAuthStore();
   
   if (!userId) {
       return (
@@ -16,14 +16,7 @@ export const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <ScreenContainer>
-      <AppWebView 
-        url="https://gorodapp.ru?tab=profile"
-        pendingAuthCustomToken={pendingWebViewCustomToken}
-        onWebAuthSuccess={() => setPendingWebViewCustomToken(null)}
-        onWebAuthError={() => console.warn('[WebViewAuth] Web auth failed')}
-      />
-    </ScreenContainer>
+    <ProfileStackNavigator />
   );
 };
 

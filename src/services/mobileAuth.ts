@@ -29,10 +29,10 @@ const generateCodeChallenge = async (verifier: string) => {
     return hashAsBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 };
 
-const getMobilePlatform = (): 'ios' | 'android' | 'unknown' => {
+const getMobilePlatform = (): 'ios' | 'android' => {
   if (Platform.OS === 'ios') return 'ios';
   if (Platform.OS === 'android') return 'android';
-  return 'unknown';
+  throw new Error('Unsupported mobile platform');
 };
 
 async function safeReadJson(response: Response) {
@@ -47,6 +47,7 @@ export const startTelegramLogin = async () => {
   if (!TELEGRAM_CLIENT_ID) throw new Error('Auth configuration incomplete');
   if (!MOBILE_AUTH_ENDPOINT) throw new Error('Auth configuration incomplete');
 
+  console.log('[MobileAuth] auth flow started');
   const nonce = Crypto.randomUUID();
   const codeVerifier = await generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -76,6 +77,7 @@ export const startTelegramLogin = async () => {
   const result = await request.promptAsync(discovery);
 
   if (result.type === 'success') {
+    console.log('[MobileAuth] redirect received');
     const code = result.params.code;
     if (typeof code !== 'string') {
         throw new Error('Telegram authorization code not received');
@@ -106,8 +108,14 @@ export const exchangeTelegramCodeForCustomToken = async (params: any) => {
       throw new Error('Invalid auth response');
   }
   
+  console.log('[MobileAuth] backend exchange success');
+
   if (!auth) throw new Error('Firebase auth is not configured');
   await signInWithCustomToken(auth, data.customToken);
+  console.log('[MobileAuth] Firebase signInWithCustomToken success');
+  if (auth.currentUser) {
+    console.log('[MobileAuth] Firebase currentUser exists');
+  }
   
   await saveMobileAuthSession({ userId: data.userId, isNewUser: data.isNewUser });
   
