@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, Linking, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, Platform, Linking, ActivityIndicator, Modal, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ErrorView } from './ui/ErrorView';
@@ -78,6 +78,21 @@ const isTelegramExternalUrl = (url: string): boolean => {
   }
 };
 
+const isTelegramCallbackUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return (
+      (parsed.hostname === 'gorodapp.ru' || parsed.hostname.endsWith('.gorodapp.ru')) &&
+      parsed.pathname === '/auth/telegram/callback'
+    );
+  } catch {
+    return url.includes('gorodapp.ru/auth/telegram/callback');
+  }
+};
+
+const IOS_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+
 interface AppWebViewProps {
   url: string;
   pendingAuthCustomToken?: string | null;
@@ -97,11 +112,13 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
   const [currentUrl, setCurrentUrl] = useState(url);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [isAuthModalVisible, setIsAuthModalVisible] = useState(false);
+  const [showAuthFallback, setShowAuthFallback] = useState(false);
 
   const [debugInfo, setDebugInfo] = useState({
     mainUrl: '',
     authUrl: '',
     isAuthModalVisible: false,
+    authTitle: '',
     lastShouldStartUrl: '',
     lastOpenWindowUrl: '',
     lastMessageType: '',
@@ -123,6 +140,22 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
       mainUrl: currentUrl || '',
     });
   }, [authUrl, isAuthModalVisible, currentUrl]);
+
+  useEffect(() => {
+    if (!isAuthModalVisible || !authUrl || !isTelegramOAuthUrl(authUrl)) {
+      setShowAuthFallback(false);
+      return;
+    }
+
+    setShowAuthFallback(false);
+
+    const timer = setTimeout(() => {
+      setShowAuthFallback(true);
+      updateDebug({ lastDecision: 'Auth fallback: show external open button' });
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [isAuthModalVisible, authUrl]);
 
   useEffect(() => {
     setCurrentUrl(url);
@@ -904,15 +937,56 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             }, 1000);
         }}
         onHttpError={(event) => {
-          console.log('[WebView] http error:', JSON.stringify(event.nativeEvent));
-          updateDebug({ lastError: `Main HTTP error: status ${event.nativeEvent.statusCode}` });
+          const native = event.nativeEvent;
+          const errorUrl = native.url || '';
+          const statusCode = native.statusCode;
+
+          console.log('[WebView] http error:', JSON.stringify(native));
+
+          updateDebug({
+            lastError: `Main HTTP error: status ${statusCode} url: ${errorUrl.slice(0, 100)}`,
+          });
+
+          if (isTelegramCallbackUrl(errorUrl) || isTelegramCallbackUrl(currentUrl)) {
+            console.log('[WebView] ignore HTTP error on Telegram callback, let web app handle it:', errorUrl);
+            setLoading(false);
+            return;
+          }
+
+          if (isFirebaseAuthHelperUrl(errorUrl)) {
+            console.log('[WebView] ignore HTTP error from Firebase helper:', errorUrl);
+            setLoading(false);
+            return;
+          }
+
+          const isLikelyMainDocument =
+            isInternalGorodUrl(errorUrl) &&
+            (errorUrl === currentUrl || currentUrl.startsWith(errorUrl) || errorUrl.startsWith(currentUrl));
+
+          if (!isLikelyMainDocument) {
+            console.log('[WebView] ignore subresource/API HTTP error:', errorUrl);
+            setLoading(false);
+            return;
+          }
+
           clearLoadingTimeout();
           setLoading(false);
           setHasError(true);
         }}
         onError={(event) => {
-          console.log('[WebView] error:', JSON.stringify(event.nativeEvent));
-          updateDebug({ lastError: `Main Error: ${event.nativeEvent.description || 'unknown'}` });
+          const native = event.nativeEvent;
+          const errorUrl = native.url || '';
+          console.log('[WebView] error:', JSON.stringify(native));
+          updateDebug({
+            lastError: `Main Error: ${native.description || 'unknown'} url: ${errorUrl.slice(0, 100)}`,
+          });
+
+          if (isTelegramCallbackUrl(errorUrl) || isTelegramCallbackUrl(currentUrl)) {
+            console.log('[WebView] ignore error on Telegram callback, let web app handle it:', errorUrl);
+            setLoading(false);
+            return;
+          }
+
           clearLoadingTimeout();
           setLoading(false);
           setHasError(true);
@@ -966,6 +1040,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
               setSupportMultipleWindows={false}
               javaScriptCanOpenWindowsAutomatically={true}
               originWhitelist={['*']}
+              userAgent={IOS_SAFARI_USER_AGENT}
               onNavigationStateChange={(navState) => {
                 const url = navState.url || '';
                 console.log('[AuthWebView] navigation:', url);
@@ -974,7 +1049,10 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   loading: navState.loading,
                   title: navState.title,
                 }));
-                updateDebug({ lastDecision: `Auth Nav: ${url.slice(0, 80)}` });
+                updateDebug({ 
+                  lastDecision: `Auth Nav: ${url.slice(0, 80)}`,
+                  authTitle: navState.title || ''
+                });
                 
                 if (isInternalGorodUrl(url)) {
                   console.log('[AuthWebView] returned to internal gorodapp:', url);
@@ -1225,6 +1303,27 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             />
           ) : null}
 
+          {/* Fallback button when Telegram loads slowly */}
+          {showAuthFallback && authUrl ? (
+            <TouchableOpacity
+              style={styles.fallbackButton}
+              onPress={() => {
+                console.log('[AuthWebView] Fallback clicked - opening externally:', authUrl);
+                updateDebug({ lastDecision: 'Auth fallback: clicked open externally' });
+                
+                Linking.openURL(authUrl).catch((err) => {
+                  console.log('[AuthWebView] external auth fallback failed:', String(err));
+                  updateDebug({ lastError: `Auth fallback failed: ${String(err)}` });
+                });
+
+                setIsAuthModalVisible(false);
+                setAuthUrl(null);
+              }}
+            >
+              <Text style={styles.fallbackButtonText}>Открыть Telegram</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {/* Temporary Debug Overlay inside Modal */}
           <View style={styles.debugOverlay} pointerEvents="none">
             <Text style={styles.debugText} numberOfLines={1}>
@@ -1232,6 +1331,9 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             </Text>
             <Text style={styles.debugText} numberOfLines={1}>
               authUrl: {debugInfo.authUrl ? debugInfo.authUrl.slice(0, 120) : 'none'}
+            </Text>
+            <Text style={styles.debugText} numberOfLines={1}>
+              authTitle: {debugInfo.authTitle || 'none'}
             </Text>
             <Text style={styles.debugText} numberOfLines={1}>
               isAuthModalVisible: {debugInfo.isAuthModalVisible ? 'true' : 'false'}
@@ -1262,6 +1364,9 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
         </Text>
         <Text style={styles.debugText} numberOfLines={1}>
           authUrl: {debugInfo.authUrl ? debugInfo.authUrl.slice(0, 120) : 'none'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          authTitle: {debugInfo.authTitle || 'none'}
         </Text>
         <Text style={styles.debugText} numberOfLines={1}>
           isAuthModalVisible: {debugInfo.isAuthModalVisible ? 'true' : 'false'}
@@ -1324,6 +1429,28 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     marginBottom: 2,
+  },
+  fallbackButton: {
+    position: 'absolute',
+    top: '45%',
+    left: '10%',
+    right: '10%',
+    backgroundColor: '#229ED9', // Telegram blue style
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  fallbackButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   }
 });
 
