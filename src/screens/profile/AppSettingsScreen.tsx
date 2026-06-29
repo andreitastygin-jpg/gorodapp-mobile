@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,17 +6,88 @@ import {
   SafeAreaView,
   Alert,
   Linking,
+  TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppText } from '../../components/ui/AppText';
 import { SettingsRow } from '../../components/profile/SettingsRow';
 import { ProfileStackParamList } from './ProfileStackNavigator';
+import { mobileProfileApi } from '../../services/mobileProfileApi';
+import { logoutMobileUser } from '../../services/mobileLogout';
 
 type NavigationProp = NativeStackNavigationProp<ProfileStackParamList, 'AppSettings'>;
 
 export const AppSettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Удалить аккаунт?',
+      'Личные данные, адреса и бонусный баланс будут удалены. История заказов будет сохранена в обезличенном виде для учёта. Это действие нельзя отменить.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Продолжить',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Подтвердите удаление',
+              'После удаления вы выйдете из аккаунта и не сможете восстановить текущий профиль.',
+              [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                  text: 'Удалить аккаунт',
+                  style: 'destructive',
+                  onPress: executeDeleteAccount,
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const executeDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      const result = await mobileProfileApi.deleteAccount();
+      if (result.success) {
+        await logoutMobileUser();
+      } else {
+        Alert.alert(
+          'Не удалось удалить аккаунт',
+          result.message || 'Попробуйте позже или обратитесь в поддержку.'
+        );
+      }
+    } catch (error: any) {
+      console.log('[AppSettings] Delete account failed');
+      const errorStr = String(error).toLowerCase();
+      if (
+        errorStr.includes('401') ||
+        errorStr.includes('403') ||
+        errorStr.includes('unauthorized') ||
+        errorStr.includes('forbidden') ||
+        errorStr.includes('access denied') ||
+        errorStr.includes('account has been deleted') ||
+        errorStr.includes('аккаунт удал') ||
+        errorStr.includes('сессия')
+      ) {
+        // Session invalid or account already deleted -> logout immediately
+        await logoutMobileUser();
+      } else {
+        Alert.alert(
+          'Не удалось удалить аккаунт',
+          'Попробуйте позже или обратитесь в поддержку.'
+        );
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleUnsupportedFeature = (featureName: string) => {
     Alert.alert(
@@ -127,6 +198,22 @@ export const AppSettingsScreen: React.FC = () => {
           />
         </View>
 
+        {/* Delete Account Button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={handleDeleteAccount}
+          disabled={isDeleting}
+          id="delete-account-button"
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#ef4444" />
+          ) : (
+            <AppText style={styles.deleteButtonText} weight="bold">
+              Удалить аккаунт
+            </AppText>
+          )}
+        </TouchableOpacity>
+
         {/* Brand footer */}
         <View style={styles.footerContainer}>
           <AppText variant="caption" color="#9ca3af" align="center">
@@ -202,6 +289,22 @@ const styles = StyleSheet.create({
     elevation: 1,
     borderWidth: 1,
     borderColor: '#f1f5f9',
+  },
+  deleteButton: {
+    marginTop: 12,
+    marginBottom: 24,
+    backgroundColor: '#fff5f5',
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+  },
+  deleteButtonText: {
+    color: '#ef4444',
+    fontSize: 14,
   },
   footerContainer: {
     marginTop: 10,

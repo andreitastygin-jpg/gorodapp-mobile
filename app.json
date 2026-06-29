@@ -23,15 +23,20 @@
       ]
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "ru.gorodapp.mobile"
+      "supportsTablet": false,
+      "bundleIdentifier": "ru.gorodapp.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "ru.gorodapp.mobile"
+      "package": "ru.gorodapp.mobile",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./src/assets/favicon.png"

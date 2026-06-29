@@ -240,4 +240,14 @@ export const mobileProfileApi = {
       }
     );
   },
+
+  /**
+   * Deletes user's account from the backend.
+   */
+  async deleteAccount(): Promise<{ success: boolean; message?: string }> {
+    return mobileApiRequest<{ success: boolean; message?: string }>('/api/user/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: true }),
+    });
+  },
 };
