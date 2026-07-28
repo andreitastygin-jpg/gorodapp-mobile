@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../api/config';
-import { getFirebaseBearerToken } from './authToken';
+import { getAuthBearerToken } from './authToken';
+import { logoutMobileUser } from './mobileLogout';
 import type {
   MobileProfileResponse,
   MobileProfileUser,
@@ -20,7 +21,8 @@ import type {
 
 /**
  * Generic request helper for authorized /api/mobile/* API endpoints.
- * It automatically fetches the current Firebase ID Token, appends the Authorization header,
+ * It automatically retrieves the current backend access token,
+ * appends the Authorization header,
  * and securely handles error parsing without exposing sensitive data.
  */
 async function mobileApiRequest<T>(
@@ -29,7 +31,7 @@ async function mobileApiRequest<T>(
 ): Promise<T> {
   try {
     console.log('[MobileProfileApi] request started');
-    const token = await getFirebaseBearerToken();
+    const token = await getAuthBearerToken();
     const url = `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 
     const headers = new Headers(options.headers || {});
@@ -47,6 +49,10 @@ async function mobileApiRequest<T>(
     const response = await fetch(url, mergedOptions);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        console.warn('[MobileProfileApi] 401 Unauthorized received. Triggering logout.');
+        logoutMobileUser().catch(console.error);
+      }
       let errorMessage = `API Request failed with status ${response.status}`;
       try {
         const rawText = await response.text();

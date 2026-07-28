@@ -4,9 +4,11 @@ interface AuthState {
   userId: string | null;
   isNewUser: boolean | null;
   lastLoginAt: string | null;
-  pendingWebViewCustomToken: string | null;
+  pendingWebViewAccessToken: string | null;
+  accessToken: string | null;
   setMobileAuthSession: (session: { userId: string; isNewUser: boolean; lastLoginAt: string }) => void;
-  setPendingWebViewCustomToken: (token: string | null) => void;
+  setPendingWebViewAccessToken: (token: string | null) => void;
+  setAccessToken: (token: string | null) => void;
   clearMobileAuthSession: () => void;
 }
 
@@ -14,17 +16,20 @@ export const useAuthStore = create<AuthState>()((set) => ({
   userId: null,
   isNewUser: null,
   lastLoginAt: null,
-  pendingWebViewCustomToken: null,
+  pendingWebViewAccessToken: null,
+  accessToken: null,
   setMobileAuthSession: (session) => set({ 
     userId: session.userId, 
     isNewUser: session.isNewUser,
     lastLoginAt: session.lastLoginAt
   }),
-  setPendingWebViewCustomToken: (token) => set({ pendingWebViewCustomToken: token }),
+  setPendingWebViewAccessToken: (token) => set({ pendingWebViewAccessToken: token }),
+  setAccessToken: (token) => set({ accessToken: token }),
   clearMobileAuthSession: () => set({ 
     userId: null, 
     isNewUser: null,
     lastLoginAt: null,
-    pendingWebViewCustomToken: null,
+    pendingWebViewAccessToken: null,
+    accessToken: null,
   }),
 }));

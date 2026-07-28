@@ -28,7 +28,8 @@
   "exclude": [
     "_web-reference",
     "node_modules",
-    "dist"
+    "dist",
+    "src/**/__tests__"
   ],
   "extends": "expo/tsconfig.base"
 }

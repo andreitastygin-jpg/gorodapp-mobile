@@ -95,14 +95,14 @@ const IOS_SAFARI_USER_AGENT =
 
 interface AppWebViewProps {
   url: string;
-  pendingAuthCustomToken?: string | null;
+  pendingAuthAccessToken?: string | null;
   onWebAuthSuccess?: () => void;
   onWebAuthError?: (error: string) => void;
 }
 
 export const AppWebView: React.FC<AppWebViewProps> = ({ 
     url, 
-    pendingAuthCustomToken, 
+    pendingAuthAccessToken, 
     onWebAuthSuccess, 
     onWebAuthError 
 }) => {
@@ -234,20 +234,20 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
 
   useEffect(() => {
     hasSentAuthTokenRef.current = false;
-    if (isWebViewLoadedRef.current && pendingAuthCustomToken) {
+    if (isWebViewLoadedRef.current && pendingAuthAccessToken) {
        injectAuthToken();
     }
-  }, [pendingAuthCustomToken]);
+  }, [pendingAuthAccessToken]);
 
   const injectAuthToken = () => {
-    if (webViewRef.current && pendingAuthCustomToken && !hasSentAuthTokenRef.current) {
+    if (webViewRef.current && pendingAuthAccessToken && !hasSentAuthTokenRef.current) {
         const js = `
             (function() {
                 window.postMessage(JSON.stringify({
                   source: 'gorodapp-mobile',
                   type: 'GORODAPP_MOBILE_AUTH_TOKEN',
                   payload: {
-                    customToken: ${JSON.stringify(pendingAuthCustomToken)}
+                    accessToken: ${JSON.stringify(pendingAuthAccessToken)}
                   }
                 }), '*');
             })();

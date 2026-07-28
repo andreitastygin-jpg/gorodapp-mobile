@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '../components/ui/AppText';
 import { linkingConfiguration } from '../services/deeplinks';
+import { useAuthStore } from '../store/useAuthStore';
+import { AuthScreen } from '../screens/AuthScreen';
 
 // Import Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -17,70 +19,75 @@ const Tab = createBottomTabNavigator();
 
 export function AppNavigator() {
   const insets = useSafeAreaInsets();
+  const { userId } = useAuthStore();
 
   return (
     <NavigationContainer linking={linkingConfiguration}>
-      <Tab.Navigator
-        screenOptions={{
-          tabBarActiveTintColor: '#3b82f6',
-          tabBarInactiveTintColor: '#6b7280',
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerShown: false,
-        }}
-      >
-        <Tab.Screen
-          name="HomeTab"
-          component={HomeScreen}
-          options={{
-            tabBarLabel: 'Главная',
-            tabBarIcon: ({ color }) => (
-              <AppText style={{ fontSize: 20, color }}>🏠</AppText>
-            ),
+      {userId ? (
+        <Tab.Navigator
+          screenOptions={{
+            tabBarActiveTintColor: '#3b82f6',
+            tabBarInactiveTintColor: '#6b7280',
+            tabBarStyle: {
+              display: 'none',
+            },
+            headerShown: false,
           }}
-        />
-        <Tab.Screen
-          name="MarketTab"
-          component={MarketScreen}
-          options={{
-            tabBarLabel: 'Маркет',
-            tabBarIcon: ({ color }) => (
-              <AppText style={{ fontSize: 20, color }}>🛍️</AppText>
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="FoodTab"
-          component={FoodScreen}
-          options={{
-            tabBarLabel: 'Еда',
-            tabBarIcon: ({ color }) => (
-              <AppText style={{ fontSize: 20, color }}>🍔</AppText>
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="CartTab"
-          component={CartScreen}
-          options={{
-            tabBarLabel: 'Корзина',
-            tabBarIcon: ({ color }) => (
-              <AppText style={{ fontSize: 20, color }}>🛒</AppText>
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="ProfileTab"
-          component={ProfileScreen}
-          options={{
-            tabBarLabel: 'Профиль',
-            tabBarIcon: ({ color }) => (
-              <AppText style={{ fontSize: 20, color }}>👤</AppText>
-            ),
-          }}
-        />
-      </Tab.Navigator>
+        >
+          <Tab.Screen
+            name="HomeTab"
+            component={HomeScreen}
+            options={{
+              tabBarLabel: 'Главная',
+              tabBarIcon: ({ color }) => (
+                <AppText style={{ fontSize: 20, color }}>🏠</AppText>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="MarketTab"
+            component={MarketScreen}
+            options={{
+              tabBarLabel: 'Маркет',
+              tabBarIcon: ({ color }) => (
+                <AppText style={{ fontSize: 20, color }}>🛍️</AppText>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="FoodTab"
+            component={FoodScreen}
+            options={{
+              tabBarLabel: 'Еда',
+              tabBarIcon: ({ color }) => (
+                <AppText style={{ fontSize: 20, color }}>🍔</AppText>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="CartTab"
+            component={CartScreen}
+            options={{
+              tabBarLabel: 'Корзина',
+              tabBarIcon: ({ color }) => (
+                <AppText style={{ fontSize: 20, color }}>🛒</AppText>
+              ),
+            }}
+          />
+          <Tab.Screen
+            name="ProfileTab"
+            component={ProfileScreen}
+            options={{
+              tabBarLabel: 'Профиль',
+              tabBarIcon: ({ color }) => (
+                <AppText style={{ fontSize: 20, color }}>👤</AppText>
+              ),
+            }}
+          />
+        </Tab.Navigator>
+      ) : (
+        <AuthScreen />
+      )}
     </NavigationContainer>
   );
 }

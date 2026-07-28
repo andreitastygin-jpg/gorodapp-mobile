@@ -5,8 +5,6 @@ import { Platform } from 'react-native';
 import { encode } from 'base-64';
 import { TELEGRAM_AUTH_URL, TELEGRAM_CLIENT_ID, MOBILE_AUTH_ENDPOINT } from '../config/auth';
 import { useAuthStore } from '../store/useAuthStore';
-import { auth } from './firebase';
-import { signInWithCustomToken, signOut as firebaseSignOut } from 'firebase/auth';
 
 const base64UrlEncode = (bytes: Uint8Array) => {
     return encode(String.fromCharCode.apply(null, Array.from(bytes)))
@@ -92,7 +90,13 @@ export const startTelegramLogin = async () => {
   throw new Error('Telegram login cancelled or failed');
 };
 
-export const exchangeTelegramCodeForCustomToken = async (params: any) => {
+export interface TelegramAuthResponse {
+  accessToken: string;
+  userId: string;
+  isNewUser: boolean;
+}
+
+export const exchangeTelegramCodeForCustomToken = async (params: any): Promise<TelegramAuthResponse> => {
   const response = await fetch(MOBILE_AUTH_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -104,22 +108,25 @@ export const exchangeTelegramCodeForCustomToken = async (params: any) => {
       throw new Error(data?.error || 'Authentication error');
   }
   
-  if (typeof data.customToken !== 'string' || typeof data.userId !== 'string' || typeof data.isNewUser !== 'boolean') {
+  if (typeof data.userId !== 'string' || typeof data.isNewUser !== 'boolean') {
       throw new Error('Invalid auth response');
+  }
+  
+  if (typeof data.accessToken !== 'string' || data.accessToken.trim() === '') {
+      throw new Error('Backend access token is missing');
   }
   
   console.log('[MobileAuth] backend exchange success');
 
-  if (!auth) throw new Error('Firebase auth is not configured');
-  await signInWithCustomToken(auth, data.customToken);
-  console.log('[MobileAuth] Firebase signInWithCustomToken success');
-  if (auth.currentUser) {
-    console.log('[MobileAuth] Firebase currentUser exists');
-  }
+  await saveUserAccessToken(data.accessToken);
   
   await saveMobileAuthSession({ userId: data.userId, isNewUser: data.isNewUser });
   
-  return { ...data };
+  return {
+    accessToken: data.accessToken,
+    userId: data.userId,
+    isNewUser: data.isNewUser,
+  };
 };
 
 export const getStoredMobileAuthSession = async () => {
@@ -153,6 +160,43 @@ export const getStoredMobileAuthSession = async () => {
   }
 };
 
+const ACCESS_TOKEN_STORAGE_KEY = 'user_access_token';
+
+export const saveUserAccessToken = async (accessToken: string): Promise<void> => {
+  if (typeof accessToken !== 'string' || accessToken.trim() === '') {
+    throw new Error('Invalid access token');
+  }
+  await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, accessToken);
+  useAuthStore.getState().setAccessToken(accessToken);
+};
+
+export const getStoredUserAccessToken = async (): Promise<string | null> => {
+  try {
+    const token = await SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY);
+    if (!token) {
+      useAuthStore.getState().setAccessToken(null);
+      return null;
+    }
+    if (typeof token !== 'string' || token.trim() === '') {
+      await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY);
+      useAuthStore.getState().setAccessToken(null);
+      return null;
+    }
+    useAuthStore.getState().setAccessToken(token);
+    return token;
+  } catch {
+    useAuthStore.getState().setAccessToken(null);
+    return null;
+  }
+};
+
+export const clearUserAccessToken = async (): Promise<void> => {
+  try {
+    await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {}
+  useAuthStore.getState().setAccessToken(null);
+};
+
 export const saveMobileAuthSession = async (session: { userId: string; isNewUser: boolean }) => {
   const sessionData = { ...session, lastLoginAt: new Date().toISOString() };
   await SecureStore.setItemAsync('auth_session', JSON.stringify(sessionData));
@@ -160,9 +204,18 @@ export const saveMobileAuthSession = async (session: { userId: string; isNewUser
 };
 
 export const clearMobileAuthSession = async () => {
-  if (auth) {
-    await firebaseSignOut(auth);
-  }
-  await SecureStore.deleteItemAsync('auth_session');
+  await clearUserAccessToken();
+  try {
+    await SecureStore.deleteItemAsync('auth_session');
+  } catch {}
   useAuthStore.getState().clearMobileAuthSession();
 };
+
+export const clearStoredMobileAuthState = async () => {
+  await clearUserAccessToken();
+  try {
+    await SecureStore.deleteItemAsync('auth_session');
+  } catch {}
+  useAuthStore.getState().clearMobileAuthSession();
+};
+

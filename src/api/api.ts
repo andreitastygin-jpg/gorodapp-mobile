@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './config';
+import { logoutMobileUser } from '../services/mobileLogout';
 
 const FUNCTION_MAP: Record<string, string> = {
   'telegram-webapp-login': '/api/auth/tg-webapp',
@@ -57,6 +58,10 @@ export async function callApiEndpoint(name: string, data: any, method: 'POST' | 
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        console.warn('[API] 401 Unauthorized received. Triggering logout.');
+        logoutMobileUser().catch(console.error);
+      }
       throw new Error(result.message || result.error || `Error calling API ${name} (${response.status})`);
     }
     return result;
@@ -141,7 +146,7 @@ export interface UserConsentsStatusResponse {
   activeDocuments: LegalDocumentSummary[];
 }
 
-import { auth } from '../services/firebase';
+import { getAuthBearerToken } from '../services/authToken';
 
 export async function getLegalDocumentsSignature(): Promise<LegalDocumentsSignatureResponse> {
   const response = await fetch(`${API_BASE_URL}/api/legal/documents/signature`, {
@@ -163,11 +168,7 @@ export async function getLegalDocumentsSignature(): Promise<LegalDocumentsSignat
 }
 
 export async function getUserConsentsStatus(): Promise<UserConsentsStatusResponse> {
-  const user = auth?.currentUser;
-  if (!user) {
-    throw new Error('Пользователь не авторизован');
-  }
-  const token = await user.getIdToken();
+  const token = await getAuthBearerToken();
   const response = await fetch(`${API_BASE_URL}/api/user/consents/status`, {
     method: 'GET',
     headers: {
@@ -188,11 +189,7 @@ export async function getUserConsentsStatus(): Promise<UserConsentsStatusRespons
 }
 
 export async function saveUserConsents(source: string): Promise<{ success: boolean; message?: string }> {
-  const user = auth?.currentUser;
-  if (!user) {
-    throw new Error('Пользователь не авторизован');
-  }
-  const token = await user.getIdToken();
+  const token = await getAuthBearerToken();
   const response = await fetch(`${API_BASE_URL}/api/user/consents`, {
     method: 'POST',
     headers: {

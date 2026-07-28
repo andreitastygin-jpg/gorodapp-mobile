@@ -1,14 +1,12 @@
-import { auth } from './firebase';
+import { getStoredUserAccessToken } from './mobileAuth';
 
 /**
- * Safely fetches the current Firebase user's ID token (Bearer token) for API authorization.
- * Accurately handles cases where user is guest/unauthenticated or Firebase auth is unconfigured.
+ * Safely returns the current backend access token for Bearer authorization.
  */
-export async function getFirebaseBearerToken(): Promise<string> {
-  const user = auth?.currentUser;
-  if (!user) {
-    throw new Error('Firebase user is not authenticated');
+export async function getAuthBearerToken(): Promise<string> {
+  const accessToken = await getStoredUserAccessToken();
+  if (!accessToken) {
+    throw new Error('User is not authenticated');
   }
-  // This will dynamically fetch (and potentially refresh) the user's ID token.
-  return user.getIdToken();
+  return accessToken;
 }

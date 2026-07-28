@@ -2,8 +2,6 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CartItem, Product, Transaction, FoodService, Category, Story, Partner, Address, Order, UserProfile, StreakInfo, FoodAddOn, ReferralData, TabType } from '../types';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
 
 // Safe Compile-Time Mock for PostHog inside the Native App to prevent 'window is not defined' errors
 const posthog = {
@@ -325,7 +323,7 @@ export const useAppStore = create<AppState>()(
 
       // Cart Actions
       addToCart: async (product, variant, bonus, addOns, foodOptions, type) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         let newCart = [...cart];
         
         const optionsSummary = foodOptions?.map(o => o.optionName).join(', ') || '';
@@ -423,18 +421,10 @@ export const useAppStore = create<AppState>()(
           category: product.category || null,
           brand: product.brand || null,
         });
-
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (addToCart):", e);
-          }
-        }
       },
 
       removeFromCart: async (id, variant, optionsSummary) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         const newCart = cart.filter(item => {
           const itemVariant = item.selectedVariant || item.selectedSize;
           const itemOptions = item.selectedOptionsSummary || '';
@@ -443,17 +433,10 @@ export const useAppStore = create<AppState>()(
         
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (removeFromCart):", e);
-          }
-        }
       },
 
       updateCartQty: async (id, delta, variant, optionsSummary) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         const newCart = cart.map(item => {
           const itemVariant = item.selectedVariant || item.selectedSize;
           const itemOptions = item.selectedOptionsSummary || '';
@@ -473,17 +456,10 @@ export const useAppStore = create<AppState>()(
 
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (updateCartQty):", e);
-          }
-        }
       },
 
       updateCartBonus: async (id, bonus, variant, optionsSummary) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         const newCart = cart.map(item => {
           const itemVariant = item.selectedVariant || item.selectedSize;
           const itemOptions = item.selectedOptionsSummary || '';
@@ -492,17 +468,10 @@ export const useAppStore = create<AppState>()(
         
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (updateCartBonus):", e);
-          }
-        }
       },
 
       toggleCartItemSelection: async (id, variant, optionsSummary) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         const newCart = cart.map(item => {
           const itemVariant = item.selectedVariant || item.selectedSize;
           const itemOptions = item.selectedOptionsSummary || '';
@@ -514,45 +483,23 @@ export const useAppStore = create<AppState>()(
         
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (toggleCartItemSelection):", e);
-          }
-        }
       },
 
       clearCartBonuses: async () => {
-        const { cart, userId } = get();
+        const { cart } = get();
         const newCart = cart.map(item => ({ ...item, selectedBonus: 0 }));
         
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (clearCartBonuses):", e);
-          }
-        }
       },
 
       clearCart: async () => {
-        const { userId } = get();
         const normalizedCart = normalizeCartItems([]);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (clearCart):", e);
-          }
-        }
       },
 
       removeItemsFromCart: async (itemsToRemove) => {
-        const { cart, userId } = get();
+        const { cart } = get();
         
         const keysToRemove = new Set(itemsToRemove.map(i => 
           `${i.id}-${i.selectedVariant || i.selectedSize || ''}-${i.type || 'market'}-${i.serviceId || i.sellerId || ''}-${i.selectedOptionsSummary || ''}`
@@ -565,38 +512,15 @@ export const useAppStore = create<AppState>()(
         
         const normalizedCart = normalizeCartItems(newCart);
         set({ cart: normalizedCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: normalizedCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (removeItemsFromCart):", e);
-          }
-        }
       },
 
       setCart: async (newCart) => {
-        const { userId } = get();
         const cleanCart = normalizeCartItems(JSON.parse(JSON.stringify(newCart || [])));
         set({ cart: cleanCart });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), sanitizeData({ cart: cleanCart }), { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (setCart):", e);
-          }
-        }
       },
 
       setOnboardingVersion: async (version) => {
-        const { userId } = get();
         set({ onboardingVersion: version });
-        if (userId && db) {
-          try {
-            await setDoc(doc(db, 'users', userId), { onboardingVersion: version }, { merge: true });
-          } catch (e) {
-            console.error("Firestore update error (setOnboardingVersion):", e);
-          }
-        }
       },
 
       setOrders: (orders) => set({ orders }),

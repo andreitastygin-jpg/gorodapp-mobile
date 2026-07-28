@@ -4,13 +4,12 @@ import { AppWebView } from '../components/AppWebView';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const MarketScreen: React.FC = () => {
-  const { pendingWebViewCustomToken, setPendingWebViewCustomToken } = useAuthStore();
+  const { pendingWebViewAccessToken } = useAuthStore();
   return (
     <ScreenContainer>
       <AppWebView 
         url="https://gorodapp.ru?tab=market"
-        pendingAuthCustomToken={pendingWebViewCustomToken}
-        onWebAuthSuccess={() => setPendingWebViewCustomToken(null)}
+        pendingAuthAccessToken={pendingWebViewAccessToken}
         onWebAuthError={() => console.warn('[WebViewAuth] Web auth failed')}
       />
     </ScreenContainer>

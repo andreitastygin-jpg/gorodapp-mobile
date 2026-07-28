@@ -1,30 +1,27 @@
-import { signOut } from 'firebase/auth';
-import { auth } from './firebase';
-import { useAuthStore } from '../store/useAuthStore';
+import { clearMobileAuthSession } from './mobileAuth';
+import { useAppStore } from '../store/useAppStore';
 
 /**
  * Safely performs logout for mobile user:
- * 1. Signs out of Firebase Auth if available.
- * 2. Clears only auth/session state in Zustand auth store using clearMobileAuthSession.
- * 3. Incorporates safe logging without leaks.
+ * Clears SecureStore and Zustand auth/session state.
+ * Resets persisted user application state.
+ * Logs completion without exposing sensitive data.
  */
 export async function logoutMobileUser(): Promise<void> {
   console.log('[MobileLogout] started');
   try {
-    if (auth) {
-      await signOut(auth);
-    }
-  } catch (err) {
-    console.log('[MobileLogout] failed');
-    throw err;
-  }
-
-  try {
-    // Reset Zustand auth store
-    useAuthStore.getState().clearMobileAuthSession();
+    // Clear both SecureStore and Zustand auth session state
+    await clearMobileAuthSession();
+    // Reset all user state in main app store
+    useAppStore.getState().resetUser();
     console.log('[MobileLogout] completed');
   } catch (err) {
-    console.log('[MobileLogout] failed');
+    console.error('[MobileLogout] failed:', err);
+    // Graceful fallback to guarantee store cleanup even if SecureStore operations fail
+    try {
+      await clearMobileAuthSession();
+    } catch {}
+    useAppStore.getState().resetUser();
     throw err;
   }
 }
