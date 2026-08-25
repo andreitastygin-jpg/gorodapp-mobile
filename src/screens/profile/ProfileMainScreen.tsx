@@ -21,6 +21,7 @@ import { ProfileStatCard } from '../../components/profile/ProfileStatCard';
 import { mobileProfileApi } from '../../services/mobileProfileApi';
 import type { MobileProfileResponse } from '../../types/mobileProfile';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useAppStore } from '../../store/useAppStore';
 import type { ProfileStackParamList } from './ProfileStackNavigator';
 import { logoutMobileUser } from '../../services/mobileLogout';
 
@@ -48,6 +49,27 @@ export const ProfileMainScreen: React.FC = () => {
     try {
       const data = await mobileProfileApi.getProfile();
       setProfile(data);
+
+      if (data?.user) {
+        useAppStore.getState().setUserData({
+          firstName: data.user.firstName || '',
+          lastName: data.user.lastName || '',
+          username: data.user.username || '',
+          photoUrl: data.user.photoUrl || '',
+          phone: data.user.phone || '',
+          email: data.user.email || '',
+          birthday: data.user.birthday || '',
+          gender: (data.user.gender as any) || '',
+          userBalance: data.stats?.bonusBalance ?? 0,
+          bonusDebt: data.stats?.bonusDebt ?? 0,
+          referralCode: data.referral?.referralCode || '',
+          phoneVerified: data.registration?.phoneVerified ?? false,
+          profileCompleted: data.registration?.profileCompleted ?? false,
+          hasRequiredConsents: data.registration?.hasRequiredConsents ?? false,
+          missingRequiredFields: data.registration?.missingRequiredFields ?? [],
+        });
+      }
+
       console.log('[ProfileMain] profile loaded');
     } catch (err) {
       console.log('[ProfileMain] profile load failed');
@@ -85,7 +107,7 @@ export const ProfileMainScreen: React.FC = () => {
 
     Alert.alert(
       'Выйти из аккаунта?',
-      'Вы сможете снова войти через Telegram.',
+      'Вы сможете войти снова в любое время.',
       [
         {
           text: 'Отмена',
@@ -203,8 +225,32 @@ export const ProfileMainScreen: React.FC = () => {
         <View style={styles.statsRow}>
           <ProfileStatCard label="Заказы" value={stats.ordersCount} />
           <ProfileStatCard label="Друзья" value={stats.friendsCount} />
-          <ProfileStatCard label="Бонусы" value={stats.bonusBalance} />
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('BonusHistory')}
+          >
+            <ProfileStatCard label="Бонусы" value={stats.bonusBalance} />
+          </TouchableOpacity>
         </View>
+
+        {/* Compact Informational Debt Block (ONLY rendered if bonusDebt > 0) */}
+        {((stats.bonusDebt ?? 0) > 0) && (
+          <View style={styles.debtCard} id="profile-bonus-debt-card">
+            <View style={styles.debtHeader}>
+              <AppText style={styles.debtIcon}>⚠️</AppText>
+              <AppText variant="title" weight="bold" color="#b45309" style={styles.debtTitle}>
+                Корректировка бонусов
+              </AppText>
+            </View>
+            <AppText variant="body" weight="bold" color="#92400e" style={styles.debtValue}>
+              К погашению: {stats.bonusDebt} Б
+            </AppText>
+            <AppText variant="caption" color="#78350f" style={styles.debtHelp}>
+              Будущие начисления бонусов сначала пойдут на погашение этой суммы.
+            </AppText>
+          </View>
+        )}
 
         {/* Referral Card */}
         <View style={styles.card}>
@@ -396,6 +442,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
     marginHorizontal: -4,
+  },
+  debtCard: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  debtHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  debtIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  debtTitle: {
+    fontSize: 15,
+  },
+  debtValue: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  debtHelp: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   referralHeader: {
     flexDirection: 'row',

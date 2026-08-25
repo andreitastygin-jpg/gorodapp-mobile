@@ -24,12 +24,74 @@ const formatDate = (isoString: string): string => {
   }
 };
 
+/**
+ * Maps transaction source to user-facing localized title.
+ * Unknown sources fall back cleanly to backend title or description.
+ */
+export const getBonusSourceTitle = (item: MobileBonusHistoryItem): string => {
+  const source = item.source?.trim().toLowerCase();
+
+  switch (source) {
+    case 'food_order_cashback':
+    case 'market_order_cashback':
+      return 'Начислено за заказ';
+    case 'order_return_bonus_refund':
+      return 'Возвращены бонусы при возврате';
+    case 'order_return_cashback_reversal':
+      return 'Аннулированы бонусы при возврате';
+    case 'bonus_debt_repayment':
+      return 'Погашение корректировки бонусов';
+    case 'welcome':
+      return 'Приветственный бонус';
+    case 'referral':
+      return 'Реферальный бонус';
+    default:
+      if (source?.startsWith('game')) {
+        return 'Бонус за игру';
+      }
+      if (source?.startsWith('promo')) {
+        return 'Промо-начисление';
+      }
+      return item.title || item.description || (item.type === 'income' ? 'Начисление бонусов' : 'Списание бонусов');
+  }
+};
+
+const getBonusSourceEmoji = (item: MobileBonusHistoryItem): string => {
+  if (item.iconType) {
+    return item.iconType;
+  }
+  const source = item.source?.trim().toLowerCase();
+  switch (source) {
+    case 'food_order_cashback':
+    case 'market_order_cashback':
+      return '🛍️';
+    case 'order_return_bonus_refund':
+      return '↩️';
+    case 'order_return_cashback_reversal':
+      return '📉';
+    case 'bonus_debt_repayment':
+      return '⚖️';
+    case 'welcome':
+      return '🎁';
+    case 'referral':
+      return '👥';
+    default:
+      if (source?.startsWith('game')) return '🎮';
+      if (source?.startsWith('promo')) return '🎟️';
+      return item.type === 'income' ? '📈' : '📉';
+  }
+};
+
 export const BonusHistoryRow: React.FC<BonusHistoryRowProps> = ({ item }) => {
   const isIncome = item.type === 'income';
+  const displayTitle = getBonusSourceTitle(item);
+  const iconEmoji = getBonusSourceEmoji(item);
+  const displayOrderId = item.orderId || item.details?.orderId;
   
-  // Decide badge background and icon symbol based on item metadata or type
-  const iconEmoji = item.iconType || (isIncome ? '📈' : '📉');
-  
+  const absAmount = Math.abs(item.amount);
+  const sign = isIncome ? '+' : '-';
+  const formattedAmount = `${sign}${absAmount} Б`;
+
   return (
     <View style={styles.container} id={`bonus-item-${item.id}`}>
       <View style={styles.leftCol}>
@@ -38,10 +100,10 @@ export const BonusHistoryRow: React.FC<BonusHistoryRowProps> = ({ item }) => {
         </View>
         <View style={styles.textDetails}>
           <AppText variant="title" weight="medium" color="#111827">
-            {item.title}
+            {displayTitle}
           </AppText>
           
-          {item.description && (
+          {item.description && item.description !== displayTitle && (
             <AppText variant="caption" color="#4b5563" style={styles.description}>
               {item.description}
             </AppText>
@@ -52,10 +114,10 @@ export const BonusHistoryRow: React.FC<BonusHistoryRowProps> = ({ item }) => {
               {formatDate(item.createdAt)}
             </AppText>
             
-            {item.orderId && (
+            {displayOrderId && (
               <View style={styles.orderBadge}>
                 <AppText variant="caption" color="#3b82f6" weight="medium" style={styles.orderText}>
-                  Заказ №{item.orderId}
+                  Заказ №{displayOrderId}
                 </AppText>
               </View>
             )}
@@ -70,10 +132,10 @@ export const BonusHistoryRow: React.FC<BonusHistoryRowProps> = ({ item }) => {
           color={isIncome ? '#10b981' : '#ef4444'}
           style={styles.amountText}
         >
-          {isIncome ? `+${item.amount}` : `−${item.amount}`}
+          {formattedAmount}
         </AppText>
         <AppText variant="caption" color="#9ca3af" align="right">
-          {isIncome ? 'бонусов' : 'списано'}
+          {isIncome ? 'начисление' : 'списание'}
         </AppText>
       </View>
     </View>
@@ -146,7 +208,7 @@ const styles = StyleSheet.create({
   rightCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
-    minWidth: 80,
+    minWidth: 85,
   },
   amountText: {
     fontSize: 16,

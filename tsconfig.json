@@ -29,7 +29,8 @@
     "_web-reference",
     "node_modules",
     "dist",
-    "src/**/__tests__"
+    "src/**/__tests__",
+    "src/**/__mocks__"
   ],
   "extends": "expo/tsconfig.base"
 }

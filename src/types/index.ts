@@ -295,6 +295,11 @@ export interface UserProfile {
   birthday?: string;
   gender?: 'Male' | 'Female' | '';
   userBalance?: number;
+  bonusDebt?: number;
+  phoneVerified?: boolean;
+  profileCompleted?: boolean;
+  hasRequiredConsents?: boolean;
+  missingRequiredFields?: string[];
   streakInfo?: StreakInfo;
   addresses?: Address[];
   scannedCodes?: string[];

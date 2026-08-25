@@ -26,7 +26,7 @@ export const AppSettingsScreen: React.FC = () => {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Удалить аккаунт?',
-      'Личные данные, адреса и бонусный баланс будут удалены. История заказов будет сохранена в обезличенном виде для учёта. Это действие нельзя отменить.',
+      'Аккаунт и сохранённые данные профиля будут удалены. Позже вы сможете зарегистрироваться снова.',
       [
         { text: 'Отмена', style: 'cancel' },
         {
@@ -35,7 +35,7 @@ export const AppSettingsScreen: React.FC = () => {
           onPress: () => {
             Alert.alert(
               'Подтвердите удаление',
-              'После удаления вы выйдете из аккаунта и не сможете восстановить текущий профиль.',
+              'Аккаунт и сохранённые данные профиля будут удалены. Позже вы сможете зарегистрироваться снова.',
               [
                 { text: 'Отмена', style: 'cancel' },
                 {
@@ -159,13 +159,13 @@ export const AppSettingsScreen: React.FC = () => {
         </AppText>
         <View style={styles.groupCard}>
           <SettingsRow
-            title="Вход через Telegram"
-            value="Активный способ входа"
-            subtitle="Ваш аккаунт привязан к Telegram-профилю"
+            title="Способ входа"
+            value="Вход через МТС ID"
+            subtitle="Ваш номер телефона подтверждён через МТС ID"
           />
           <SettingsRow
             title="Защищённая сессия"
-            value="Firebase Auth"
+            value="МТС ID / Bearer JWT"
             subtitle="Ваш сеанс защищен современным шифрованием"
           />
         </View>

@@ -14,6 +14,7 @@ import type {
   MobilePushSettingsPayload,
   MobilePushUnregisterPayload,
   MobilePushResponse,
+  MobilePushSettingsResponse,
   MobileOrdersParams,
   MobileOrdersResponse,
   MobileOrderDetailsResponse,
@@ -187,6 +188,15 @@ export const mobileProfileApi = {
     return mobileApiRequest<MobilePushResponse>('/api/mobile/push/register', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+
+  /**
+   * Fetches the current push notification settings for a device.
+   */
+  async getPushSettings(deviceId: string): Promise<MobilePushSettingsResponse> {
+    return mobileApiRequest<MobilePushSettingsResponse>(`/api/mobile/push/settings?deviceId=${encodeURIComponent(deviceId)}`, {
+      method: 'GET',
     });
   },
 

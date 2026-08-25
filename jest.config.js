@@ -5,4 +5,11 @@ module.exports = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
   },
+  moduleNameMapper: {
+    '^expo-notifications$': '<rootDir>/src/services/__mocks__/expo-notifications.ts',
+    '^expo-device$': '<rootDir>/src/services/__mocks__/expo-device.ts',
+    '^expo-constants$': '<rootDir>/src/services/__mocks__/expo-constants.ts',
+    '^expo-crypto$': '<rootDir>/src/services/__mocks__/expo-crypto.ts',
+    '^expo-auth-session$': '<rootDir>/src/services/__mocks__/expo-auth-session.ts',
+  },
 };

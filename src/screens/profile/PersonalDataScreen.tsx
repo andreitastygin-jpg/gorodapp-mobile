@@ -16,10 +16,10 @@ import { LoadingView } from '../../components/ui/LoadingView';
 import { ProfileField } from '../../components/profile/ProfileField';
 import { mobileProfileApi } from '../../services/mobileProfileApi';
 import type { MobileProfileUser, MobileProfileUpdatePayload } from '../../types/mobileProfile';
+import { useAppStore } from '../../store/useAppStore';
 
 interface OriginalFormState {
   displayName: string;
-  phone: string;
   email: string;
   gender: string | null;
   birthday: string;
@@ -62,17 +62,39 @@ export const PersonalDataScreen: React.FC = () => {
       // Populate form fields
       setUsername(user.username);
       setFormDisplayName(user.displayName || '');
-      setFormPhone(user.phone || '');
+      
+      // Verified phone from server is source of truth (GET /api/mobile/profile)
+      const verifiedPhone = user.phone ?? '';
+      setFormPhone(verifiedPhone);
+      
       setFormEmail(user.email || '');
       setFormGender(user.gender || null);
       setFormBirthday(user.birthday || '');
 
       setOriginalData({
         displayName: user.displayName || '',
-        phone: user.phone || '',
         email: user.email || '',
         gender: user.gender || null,
         birthday: user.birthday || '',
+      });
+
+      // Synchronize Zustand app store with latest profile data
+      useAppStore.getState().setUserData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        username: user.username || '',
+        photoUrl: user.photoUrl || '',
+        phone: verifiedPhone,
+        email: user.email || '',
+        birthday: user.birthday || '',
+        gender: (user.gender as any) || '',
+        userBalance: response.stats?.bonusBalance ?? 0,
+        bonusDebt: response.stats?.bonusDebt ?? 0,
+        referralCode: response.referral?.referralCode || '',
+        phoneVerified: response.registration?.phoneVerified ?? false,
+        profileCompleted: response.registration?.profileCompleted ?? false,
+        hasRequiredConsents: response.registration?.hasRequiredConsents ?? false,
+        missingRequiredFields: response.registration?.missingRequiredFields ?? [],
       });
 
       console.log('[PersonalData] loaded');
@@ -95,12 +117,11 @@ export const PersonalDataScreen: React.FC = () => {
     fetchProfileData(false);
   };
 
-  // Check if form suffers any change compared to loaded profile
+  // Check if editable form fields have changed compared to loaded profile
   const isDirty = (): boolean => {
     if (!originalData) return false;
     return (
       formDisplayName.trim() !== originalData.displayName ||
-      formPhone.trim() !== originalData.phone ||
       formEmail.trim() !== originalData.email ||
       formGender !== originalData.gender ||
       formBirthday.trim() !== originalData.birthday
@@ -111,7 +132,6 @@ export const PersonalDataScreen: React.FC = () => {
     // 1. Validation & sanitization
     const errors: Record<string, string> = {};
     const trimmedName = formDisplayName.trim();
-    const trimmedPhone = formPhone.trim();
     const trimmedEmail = formEmail.trim();
     const trimmedBirthday = formBirthday.trim();
 
@@ -161,10 +181,10 @@ export const PersonalDataScreen: React.FC = () => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || null;
 
+    // Send only editable fields; phone is verified and immutable here
     const payload: MobileProfileUpdatePayload = {
       firstName: firstName || null,
       lastName: lastName,
-      phone: trimmedPhone || null,
       email: trimmedEmail || null,
       gender: formGender,
       birthday: trimmedBirthday || null,
@@ -181,19 +201,31 @@ export const PersonalDataScreen: React.FC = () => {
         updatedUser = result as MobileProfileUser;
       }
 
-      // Re-populate and reset states
+      // Re-populate and reset states while keeping verified phone intact
       setFormDisplayName(updatedUser.displayName || '');
-      setFormPhone(updatedUser.phone || '');
+      const currentPhone = updatedUser.phone ?? formPhone;
+      setFormPhone(currentPhone);
       setFormEmail(updatedUser.email || '');
       setFormGender(updatedUser.gender || null);
       setFormBirthday(updatedUser.birthday || '');
 
       setOriginalData({
         displayName: updatedUser.displayName || '',
-        phone: updatedUser.phone || '',
         email: updatedUser.email || '',
         gender: updatedUser.gender || null,
         birthday: updatedUser.birthday || '',
+      });
+
+      // Synchronize Zustand app store with updated user data
+      useAppStore.getState().setUserData({
+        firstName: updatedUser.firstName || '',
+        lastName: updatedUser.lastName || '',
+        username: updatedUser.username || '',
+        photoUrl: updatedUser.photoUrl || '',
+        phone: currentPhone,
+        email: updatedUser.email || '',
+        birthday: updatedUser.birthday || '',
+        gender: (updatedUser.gender as any) || '',
       });
 
       console.log('[PersonalData] saved');
@@ -317,14 +349,21 @@ export const PersonalDataScreen: React.FC = () => {
                   error={formErrors.displayName}
                 />
 
-                <ProfileField
-                  label="Телефон"
-                  value={formPhone}
-                  onChangeText={setFormPhone}
-                  placeholder="Пример: +7 (999) 123-4567"
-                  keyboardType="phone-pad"
-                  editable={!saving}
-                />
+                <View style={styles.phoneSection}>
+                  <ProfileField
+                    label="Телефон"
+                    value={formPhone || 'Не указан'}
+                    onChangeText={() => {}}
+                    placeholder="Номер телефона"
+                    keyboardType="phone-pad"
+                    editable={false}
+                  />
+                  <View style={styles.phoneVerifiedBadge}>
+                    <AppText variant="caption" color="#10b981" weight="medium" style={styles.phoneVerifiedText}>
+                      ✓ Подтверждён через МТС ID (недоступен для изменения)
+                    </AppText>
+                  </View>
+                </View>
 
                 <ProfileField
                   label="Электронная почта"
@@ -464,6 +503,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f1f5f9',
     marginBottom: 20,
+  },
+  phoneSection: {
+    marginBottom: 16,
+  },
+  phoneVerifiedBadge: {
+    marginTop: -10,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  phoneVerifiedText: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   genderContainer: {
     marginBottom: 16,

@@ -4,12 +4,24 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { getStoredUserAccessToken, getStoredMobileAuthSession, clearStoredMobileAuthState } from './src/services/mobileAuth';
 import { useAuthStore } from './src/store/useAuthStore';
+import { useAppStore } from './src/store/useAppStore';
 import { mobileProfileApi } from './src/services/mobileProfileApi';
+import { bootstrapDevicePushToken, setupNotificationListeners } from './src/services/pushNotifications';
 import LoadingView from './src/components/ui/LoadingView';
 import * as SecureStore from 'expo-secure-store';
 
 export default function App() {
   const [isAuthRestoring, setIsAuthRestoring] = useState(true);
+
+  // Setup foreground & background tap push notification listeners
+  useEffect(() => {
+    const unsubscribe = setupNotificationListeners((payload) => {
+      console.log('[App] Push notification payload tapped:', payload);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -29,10 +41,34 @@ export default function App() {
         if (token && token.trim() !== '' && isValidSession) {
           try {
             console.log('[App] Verifying restored session with backend...');
-            await mobileProfileApi.getProfile();
+            const profileResponse = await mobileProfileApi.getProfile();
             console.log('[App] Session verified successfully.');
             if (active) {
+              if (profileResponse?.user) {
+                useAppStore.getState().setUserData({
+                  firstName: profileResponse.user.firstName || '',
+                  lastName: profileResponse.user.lastName || '',
+                  username: profileResponse.user.username || '',
+                  photoUrl: profileResponse.user.photoUrl || '',
+                  phone: profileResponse.user.phone || '',
+                  email: profileResponse.user.email || '',
+                  birthday: profileResponse.user.birthday || '',
+                  gender: (profileResponse.user.gender as any) || '',
+                  userBalance: profileResponse.stats?.bonusBalance ?? 0,
+                  bonusDebt: profileResponse.stats?.bonusDebt ?? 0,
+                  referralCode: profileResponse.referral?.referralCode || '',
+                  phoneVerified: profileResponse.registration?.phoneVerified ?? false,
+                  profileCompleted: profileResponse.registration?.profileCompleted ?? false,
+                  hasRequiredConsents: profileResponse.registration?.hasRequiredConsents ?? false,
+                  missingRequiredFields: profileResponse.registration?.missingRequiredFields ?? [],
+                });
+              }
               useAuthStore.getState().setPendingWebViewAccessToken(token);
+
+              // Bootstrap push notifications in background without blocking bootstrap
+              bootstrapDevicePushToken().catch((pushErr) => {
+                console.warn('[App] Push token registration on bootstrap failed gracefully:', pushErr);
+              });
             }
           } catch (apiErr: any) {
             console.warn('[App] Session verification failed:', apiErr);

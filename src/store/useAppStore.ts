@@ -19,6 +19,11 @@ export interface AppState {
   userId: string | null;
   isAuthReady: boolean;
   userBalance: number;
+  bonusDebt: number;
+  phoneVerified: boolean;
+  profileCompleted: boolean;
+  hasRequiredConsents: boolean;
+  missingRequiredFields: string[];
   cart: CartItem[];
   scannedCodes: string[];
   streakInfo: StreakInfo;
@@ -116,20 +121,6 @@ const toPlainUserUpdate = (value: any): Record<string, any> => {
 
   Object.entries(value).forEach(([key, item]) => {
     if (item === undefined) return;
-
-    const isFirebaseInternalObject =
-      item &&
-      typeof item === 'object' &&
-      (
-        typeof (item as any).path === 'string' ||
-        typeof (item as any).firestore === 'object' ||
-        typeof (item as any).toDate === 'function'
-      );
-
-    if (isFirebaseInternalObject) {
-      return;
-    }
-
     result[key] = item;
   });
 
@@ -166,6 +157,11 @@ export const useAppStore = create<AppState>()(
       userId: null,
       isAuthReady: false,
       userBalance: 0,
+      bonusDebt: 0,
+      phoneVerified: false,
+      profileCompleted: false,
+      hasRequiredConsents: false,
+      missingRequiredFields: [],
       cart: [],
       scannedCodes: [],
       streakInfo: { lastClaimedDay: '', currentStreak: 0 },
@@ -280,6 +276,11 @@ export const useAppStore = create<AppState>()(
 
         return {
           userBalance: newBalance,
+          bonusDebt: updateAny.bonusDebt !== undefined ? updateAny.bonusDebt : state.bonusDebt,
+          phoneVerified: updateAny.phoneVerified !== undefined ? updateAny.phoneVerified : state.phoneVerified,
+          profileCompleted: updateAny.profileCompleted !== undefined ? updateAny.profileCompleted : state.profileCompleted,
+          hasRequiredConsents: updateAny.hasRequiredConsents !== undefined ? updateAny.hasRequiredConsents : state.hasRequiredConsents,
+          missingRequiredFields: updateAny.missingRequiredFields !== undefined ? updateAny.missingRequiredFields : state.missingRequiredFields,
           cart: updateAny.cart !== undefined
             ? Array.isArray(updateAny.cart)
               ? normalizeCartItems(updateAny.cart)
@@ -531,6 +532,11 @@ export const useAppStore = create<AppState>()(
           userId: null,
           isAuthReady: true,
           userBalance: 0,
+          bonusDebt: 0,
+          phoneVerified: false,
+          profileCompleted: false,
+          hasRequiredConsents: false,
+          missingRequiredFields: [],
           cart: [],
           scannedCodes: [],
           streakInfo: { lastClaimedDay: '', currentStreak: 0 },
@@ -565,6 +571,11 @@ export const useAppStore = create<AppState>()(
         activeTab: state.activeTab,
         userId: state.userId,
         userBalance: state.userBalance,
+        bonusDebt: state.bonusDebt,
+        phoneVerified: state.phoneVerified,
+        profileCompleted: state.profileCompleted,
+        hasRequiredConsents: state.hasRequiredConsents,
+        missingRequiredFields: state.missingRequiredFields,
         cart: state.cart,
         scannedCodes: state.scannedCodes,
         streakInfo: state.streakInfo,

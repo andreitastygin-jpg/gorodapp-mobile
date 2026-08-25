@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { startTelegramLogin, clearMobileAuthSession } from '../services/mobileAuth';
 import { initiateMtsAuth, MtsAuthSession, validatePhone } from '../services/mtsAuth';
+import { bootstrapDevicePushToken } from '../services/pushNotifications';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const AuthScreen: React.FC = () => {
@@ -32,6 +33,7 @@ export const AuthScreen: React.FC = () => {
         try {
             const result = await startTelegramLogin();
             setPendingWebViewAccessToken(result.accessToken);
+            bootstrapDevicePushToken().catch(() => {});
         } catch (e: any) {
             setError(e.message || 'Telegram login failed');
         } finally {
@@ -77,6 +79,7 @@ export const AuthScreen: React.FC = () => {
                     setPendingWebViewAccessToken(token);
                     setIsPolling(false);
                     setLoading(false);
+                    bootstrapDevicePushToken().catch(() => {});
                 },
                 (errorMsg) => {
                     setError(errorMsg);

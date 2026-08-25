@@ -21,21 +21,6 @@ const getHostname = (urlStr: string): string => {
   }
 };
 
-const FIREBASE_AUTH_DOMAIN =
-  process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'gorod-bdd74.firebaseapp.com';
-
-const isFirebaseAuthHelperUrl = (urlStr: string): boolean => {
-  try {
-    const parsed = new URL(urlStr);
-    return (
-      parsed.hostname === FIREBASE_AUTH_DOMAIN &&
-      parsed.pathname.startsWith('/__/auth/')
-    );
-  } catch {
-    return false;
-  }
-};
-
 const isAllowedTechnicalUrl = (url: string): boolean => {
   return (
     url === 'about:blank' ||
@@ -299,12 +284,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             lastOpenWindowUrl: `Iframe: ${nextUrl.slice(0, 100)}`,
           });
 
-          if (isFirebaseAuthHelperUrl(nextUrl)) {
-            console.log('[WebView] iframe Firebase helper ignored:', nextUrl);
-            updateDebug({ lastDecision: 'Iframe Firebase helper: ignore' });
-            return;
-          }
-
           if (isTelegramOAuthUrl(nextUrl)) {
             console.log('[WebView] iframe Telegram OAuth: open modal:', nextUrl);
             updateDebug({ lastDecision: 'Iframe Telegram OAuth: open modal' });
@@ -349,10 +328,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
           console.log('[WebView] open auth modal:', data.url);
           setAuthUrl(data.url);
           setIsAuthModalVisible(true);
-          return;
-        }
-        if (data.type === 'WEB_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
-          console.log('[WebView message] ignore Firebase auth helper popup:', data.url);
           return;
         }
         if (data.type === 'WEB_WINDOW_OPEN_INTERNAL' && data.url) {
@@ -414,14 +389,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
       return true;
     }
 
-    // 2. Firebase Auth Helper
-    if (isFirebaseAuthHelperUrl(targetUrl)) {
-      console.log('[WebView] allow Firebase auth helper:', targetUrl);
-      updateDebug({ lastDecision: 'Firebase Helper: allowed' });
-      return true;
-    }
-
-    // 3. Telegram OAuth -> open in modal
+    // 2. Telegram OAuth -> open in modal
     if (isTelegramOAuthUrl(targetUrl)) {
       console.log('[WebView] intercept Telegram OAuth:', targetUrl);
       updateDebug({ lastDecision: 'Telegram OAuth: open in modal' });
@@ -494,12 +462,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
     updateDebug({
       lastOpenWindowUrl: targetUrl.slice(0, 120),
     });
-
-    if (isFirebaseAuthHelperUrl(targetUrl)) {
-      console.log('[WebView] ignore Firebase auth helper popup:', targetUrl);
-      updateDebug({ lastDecision: 'OpenWindow Firebase Helper: ignore' });
-      return;
-    }
 
     if (isTelegramOAuthUrl(targetUrl)) {
       console.log('[WebView] open window internal oauth:', targetUrl);
@@ -636,27 +598,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 try {
                   absoluteUrl = new URL(targetUrl, window.location.href).href;
                 } catch (e) {}
-
-                let isFirebaseAuthHelper = false;
-                try {
-                  const parsedUrl = new URL(absoluteUrl);
-                  isFirebaseAuthHelper = (parsedUrl.hostname === '${FIREBASE_AUTH_DOMAIN}' && parsedUrl.pathname.indexOf('/__/auth/') === 0);
-                } catch (e) {}
-
-                if (isFirebaseAuthHelper) {
-                  try {
-                    var iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = absoluteUrl;
-                    document.documentElement.appendChild(iframe);
-                  } catch (e) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                      type: 'WEB_WINDOW_OPEN_FIREBASE_AUTH',
-                      url: absoluteUrl
-                    }));
-                  }
-                  return null;
-                }
 
                 let isInternalGorod = false;
                 try {
@@ -953,12 +894,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
             return;
           }
 
-          if (isFirebaseAuthHelperUrl(errorUrl)) {
-            console.log('[WebView] ignore HTTP error from Firebase helper:', errorUrl);
-            setLoading(false);
-            return;
-          }
-
           const isLikelyMainDocument =
             isInternalGorodUrl(errorUrl) &&
             (errorUrl === currentUrl || currentUrl.startsWith(errorUrl) || errorUrl.startsWith(currentUrl));
@@ -1075,12 +1010,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                   return true;
                 }
 
-                if (isFirebaseAuthHelperUrl(url)) {
-                  console.log('[AuthWebView] allow Firebase auth helper:', url);
-                  updateDebug({ lastDecision: 'Auth shouldStart: Firebase helper allowed' });
-                  return true;
-                }
-
                 if (isTelegramOAuthUrl(url)) {
                   console.log('[AuthWebView] allow Telegram OAuth:', url);
                   updateDebug({ lastDecision: 'Auth shouldStart: Telegram OAuth allowed' });
@@ -1125,12 +1054,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                 if (!targetUrl) return;
 
                 updateDebug({ lastOpenWindowUrl: `Auth: ${targetUrl.slice(0, 100)}` });
-
-                if (isFirebaseAuthHelperUrl(targetUrl)) {
-                  console.log('[AuthWebView] ignore Firebase auth helper popup:', targetUrl);
-                  updateDebug({ lastDecision: 'Auth OpenWindow Firebase: ignore' });
-                  return;
-                }
 
                 if (isTelegramOAuthUrl(targetUrl)) {
                   console.log('[AuthWebView] set auth url for Telegram OAuth window.open:', targetUrl);
@@ -1187,27 +1110,6 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                         absoluteUrl = new URL(targetUrl, window.location.href).href;
                       } catch (e) {}
 
-                      let isFirebaseAuthHelper = false;
-                      try {
-                        const parsedUrl = new URL(absoluteUrl);
-                        isFirebaseAuthHelper = (parsedUrl.hostname === '${FIREBASE_AUTH_DOMAIN}' && parsedUrl.pathname.indexOf('/__/auth/') === 0);
-                      } catch (e) {}
-
-                      if (isFirebaseAuthHelper) {
-                        try {
-                          var iframe = document.createElement('iframe');
-                          iframe.style.display = 'none';
-                          iframe.src = absoluteUrl;
-                          document.documentElement.appendChild(iframe);
-                        } catch (e) {
-                          window.ReactNativeWebView.postMessage(JSON.stringify({
-                            type: 'AUTH_WINDOW_OPEN_FIREBASE_AUTH',
-                            url: absoluteUrl
-                          }));
-                        }
-                        return null;
-                      }
-
                       window.ReactNativeWebView.postMessage(JSON.stringify({
                         type: 'AUTH_WINDOW_OPEN',
                         url: absoluteUrl,
@@ -1244,21 +1146,9 @@ export const AppWebView: React.FC<AppWebViewProps> = ({
                     updateDebug({ lastMessageType: `Auth: ${data.type}` });
                   }
 
-                  if (data.type === 'AUTH_WINDOW_OPEN_FIREBASE_AUTH' && data.url) {
-                    console.log('[AuthWebView] ignore Firebase auth helper popup:', data.url);
-                    updateDebug({ lastDecision: 'Auth Msg Firebase Helper: ignore' });
-                    return;
-                  }
-
                   if (data.type === 'AUTH_WINDOW_OPEN' && data.url) {
                     const url = String(data.url);
                     updateDebug({ lastOpenWindowUrl: `Auth Msg: ${url.slice(0, 80)}` });
-
-                    if (isFirebaseAuthHelperUrl(url)) {
-                      console.log('[AuthWebView] ignore Firebase auth helper popup inside message:', url);
-                      updateDebug({ lastDecision: 'Auth Msg Firebase helper inside AUTH_WINDOW_OPEN: ignore' });
-                      return;
-                    }
 
                     if (isTelegramOAuthUrl(url)) {
                       console.log('[AuthWebView] load Telegram OAuth from window.open:', url);

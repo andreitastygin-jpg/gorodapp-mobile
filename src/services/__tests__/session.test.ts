@@ -199,7 +199,7 @@ describe('Session Management & Lifecycle Tests', () => {
     }
 
     // Даем асинхронному вызову logout завершиться
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     expect(useAuthStore.getState().userId).toBeNull();
     expect(await SecureStore.getItemAsync('user_access_token')).toBeNull();

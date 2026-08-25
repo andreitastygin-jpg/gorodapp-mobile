@@ -19,6 +19,14 @@ export interface MobileProfileStats {
   ordersCount: number;
   friendsCount: number;
   bonusBalance: number;
+  bonusDebt: number;
+}
+
+export interface MobileProfileRegistration {
+  phoneVerified: boolean;
+  profileCompleted: boolean;
+  hasRequiredConsents: boolean;
+  missingRequiredFields: string[];
 }
 
 export interface MobileProfileResponse {
@@ -30,12 +38,12 @@ export interface MobileProfileResponse {
   sync: {
     status: string;
   };
+  registration: MobileProfileRegistration;
 }
 
 export interface MobileProfileUpdatePayload {
   firstName?: string | null;
   lastName?: string | null;
-  phone?: string | null;
   email?: string | null;
   birthday?: string | null;
   gender?: string | null;
@@ -62,14 +70,22 @@ export interface MobileAddress {
 export type MobileAddressCreatePayload = Partial<Omit<MobileAddress, 'id' | 'createdAt' | 'updatedAt'>>;
 export type MobileAddressUpdatePayload = Partial<Omit<MobileAddress, 'id' | 'createdAt' | 'updatedAt'>>;
 
+export interface MobileBonusHistoryDetails {
+  orderId?: string;
+  returnRequestId?: string;
+  sourceRef?: string;
+}
+
 export interface MobileBonusHistoryItem {
   id: string;
   amount: number;
   type: 'income' | 'expense';
+  source?: string | null;
   title: string;
   description: string | null;
-  iconType: string | null;
-  orderId: string | null;
+  iconType?: string | null;
+  orderId?: string | null;
+  details?: MobileBonusHistoryDetails | null;
   createdAt: string;
 }
 
@@ -100,6 +116,12 @@ export interface MobilePushUnregisterPayload {
 export interface MobilePushResponse {
   success: boolean;
   enabled?: boolean;
+}
+
+export interface MobilePushSettingsResponse {
+  success: boolean;
+  registered: boolean;
+  enabled: boolean;
 }
 
 export type MobileOrderMethod = 'pickup' | 'delivery';
