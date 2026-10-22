@@ -4,11 +4,6 @@ jest.mock('expo-crypto', () => ({
   randomUUID: jest.fn(() => 'mock-device-uuid-12345'),
 }));
 
-jest.mock('expo-auth-session', () => ({
-  makeRedirectUri: jest.fn(() => 'mock-redirect-uri'),
-  ResponseType: { Code: 'code' },
-  AuthRequest: jest.fn(),
-}));
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },

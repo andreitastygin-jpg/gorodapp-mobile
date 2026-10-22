@@ -1,94 +1,40 @@
-import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer } from '@react-navigation/native';
-import { Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppText } from '../components/ui/AppText';
-import { linkingConfiguration } from '../services/deeplinks';
-import { useAuthStore } from '../store/useAuthStore';
-import { AuthScreen } from '../screens/AuthScreen';
+import React, { useEffect, useState } from 'react';
+import * as Linking from 'expo-linking';
+import { ScreenContainer } from '../components/ui/ScreenContainer';
+import { AppWebView } from '../components/AppWebView';
+import { SITE_URL, siteUrlForIncoming } from '../services/linkPolicy';
+import { handleWebSessionMessage, parseWebSessionMessage } from '../services/webSession';
 
-// Import Screens
-import HomeScreen from '../screens/HomeScreen';
-import MarketScreen from '../screens/MarketScreen';
-import FoodScreen from '../screens/FoodScreen';
-import CartScreen from '../screens/CartScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+interface AppNavigatorProps {
+  /** A page to open from outside the site (notification tap). */
+  openUrl?: string | null;
+}
 
-const Tab = createBottomTabNavigator();
+// One screen: the site. It can be used without logging in (catalog, food,
+// events); the site asks to log in when it is needed (checkout, bonuses).
+export function AppNavigator({ openUrl }: AppNavigatorProps) {
+  const incoming = Linking.useURL();
+  const [url, setUrl] = useState(() => siteUrlForIncoming(incoming) ?? SITE_URL);
 
-export function AppNavigator() {
-  const insets = useSafeAreaInsets();
-  const { userId } = useAuthStore();
+  useEffect(() => {
+    const next = siteUrlForIncoming(incoming);
+    if (next) setUrl(next);
+  }, [incoming]);
+
+  useEffect(() => {
+    const next = siteUrlForIncoming(openUrl);
+    if (next) setUrl(next);
+  }, [openUrl]);
+
+  const onWebMessage = (raw: string) => {
+    const message = parseWebSessionMessage(raw);
+    if (message) void handleWebSessionMessage(message);
+  };
 
   return (
-    <NavigationContainer linking={linkingConfiguration}>
-      {userId ? (
-        <Tab.Navigator
-          screenOptions={{
-            tabBarActiveTintColor: '#3b82f6',
-            tabBarInactiveTintColor: '#6b7280',
-            tabBarStyle: {
-              display: 'none',
-            },
-            headerShown: false,
-          }}
-        >
-          <Tab.Screen
-            name="HomeTab"
-            component={HomeScreen}
-            options={{
-              tabBarLabel: 'Главная',
-              tabBarIcon: ({ color }) => (
-                <AppText style={{ fontSize: 20, color }}>🏠</AppText>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="MarketTab"
-            component={MarketScreen}
-            options={{
-              tabBarLabel: 'Маркет',
-              tabBarIcon: ({ color }) => (
-                <AppText style={{ fontSize: 20, color }}>🛍️</AppText>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="FoodTab"
-            component={FoodScreen}
-            options={{
-              tabBarLabel: 'Еда',
-              tabBarIcon: ({ color }) => (
-                <AppText style={{ fontSize: 20, color }}>🍔</AppText>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="CartTab"
-            component={CartScreen}
-            options={{
-              tabBarLabel: 'Корзина',
-              tabBarIcon: ({ color }) => (
-                <AppText style={{ fontSize: 20, color }}>🛒</AppText>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="ProfileTab"
-            component={ProfileScreen}
-            options={{
-              tabBarLabel: 'Профиль',
-              tabBarIcon: ({ color }) => (
-                <AppText style={{ fontSize: 20, color }}>👤</AppText>
-              ),
-            }}
-          />
-        </Tab.Navigator>
-      ) : (
-        <AuthScreen />
-      )}
-    </NavigationContainer>
+    <ScreenContainer>
+      <AppWebView url={url} onWebMessage={onWebMessage} />
+    </ScreenContainer>
   );
 }
 

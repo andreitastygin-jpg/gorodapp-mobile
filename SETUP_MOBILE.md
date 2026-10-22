@@ -1,55 +1,28 @@
-# Setup Gorodapp Mobile
+# GorodApp Mobile — установка
 
-This is an Expo React Native mobile project.
+Приложение на Expo (SDK 57, React Native 0.86). Внутри — сайт https://gorodapp.ru в одном WebView:
+каталог, корзина, оформление, вход (МТС ID / код из SMS), согласия и продление входа делает сайт.
+Приложение добавляет: внешние ссылки — в браузер/приложения телефона, кнопку «Назад» на Android,
+экран «нет связи», ссылки `gorodapp://…` и регистрацию телефона для уведомлений (`src/services/webSession.ts`).
 
-## What is gorodapp-mobile
-It is the mobile application part of the Gorodapp ecosystem, built with Expo.
+## Требования
+- Node.js, npm (единственный менеджер пакетов проекта: `package-lock.json`);
+- Expo / EAS CLI; Xcode (iOS) или Android Studio (Android) для локального запуска.
 
-## Why it's not deployed to hosting
-As a mobile application, it is packaged into installable files (APK/IPA) rather than served as a website. Android preview builds are managed via [EAS Build](https://docs.expo.dev/build/introduction/).
+## Запуск
+```bash
+npm install
+npx expo run:ios       # или npx expo run:android
+npm test               # тесты
+npx tsc --noEmit       # проверка типов
+npx expo-doctor        # проверка зависимостей
+```
 
-## System Requirements
-- Node.js
-- npm
-- Expo/EAS CLI
-
-## Parts of the system
-- gorodapp-mobile (this app)
-- backend API
-- gorodapp.ru (web version inside WebView)
-
-## Setup
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Create local `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-3. Fill in the required variables in `.env`.
-   - Get your Firebase client config from: Firebase Console → Project settings → General → Your apps → Firebase SDK config.
-   - Note: EXPO_PUBLIC_* variables are public and bundled into the app.
-   - Note: Never store backend secrets in the mobile app.
-4. Set backend environment variable needed:
-   `TELEGRAM_MOBILE_REDIRECT_URI=gorodapp://auth/telegram/callback`
-
-## EAS Setup
-1. Install EAS CLI:
-   ```bash
-   npm install -g eas-cli
-   ```
-2. Login:
-   ```bash
-   eas login
-   ```
-3. Configure the project:
-   ```bash
-   eas build:configure
-   ```
-4. Build Android preview APK:
-   ```bash
-   eas build --platform android --profile preview
-   ```
-
-After the build completes, download and install the APK on your device. Ensure the APK is configured correctly and connectivity works with the backend.
+## Сборка (EAS)
+```bash
+npm install -g eas-cli
+eas login
+eas build --platform ios --profile production
+eas build --platform android --profile production
+```
+Проект EAS уже настроен (`app.json` → `extra.eas.projectId`).

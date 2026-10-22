@@ -261,7 +261,7 @@ export const ProfileMainScreen: React.FC = () => {
                 Пригласить друга
               </AppText>
               <AppText variant="caption" color="#6b7280" style={{ marginTop: 2 }}>
-                Приглашайте друзей и получайте кэшбэк
+                Приглашайте друзей и получайте бонусы
               </AppText>
             </View>
           </View>
