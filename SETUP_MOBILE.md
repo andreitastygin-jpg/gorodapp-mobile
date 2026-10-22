@@ -19,10 +19,20 @@ npx expo-doctor        # проверка зависимостей
 ```
 
 ## Сборка (EAS)
+Папки `ios/` и `android/` не хранятся в git: их создают `npx expo run:*` / `npx expo prebuild` и сборка EAS
+из `app.json`. Номер сборки ведёт EAS (`appVersionSource: remote`, в `production` — `autoIncrement`),
+вручную `buildNumber` / `versionCode` не менять; версию для магазинов (`version` в `app.json`) — меняем сами.
+
 ```bash
 npm install -g eas-cli
 eas login
-eas build --platform ios --profile production
-eas build --platform android --profile production
+eas build --platform android --profile preview      # APK: поставить на Android-телефон по ссылке
+eas build --platform ios --profile production       # iOS для TestFlight (вход в Apple Developer)
+eas submit --platform ios --latest                  # отправить в TestFlight
+eas build --platform android --profile production   # AAB для Google Play
 ```
-Проект EAS уже настроен (`app.json` → `extra.eas.projectId`).
+Проект EAS уже настроен (`app.json` → `extra.eas.projectId`). Ключи и пароли (Apple, Google, Expo)
+в репозиторий не кладутся — EAS хранит их у себя.
+
+Локальная сборка iOS (`npx expo run:ios`) требует CocoaPods и Ruby 2.7+ (системный Ruby 2.6 на macOS
+не подходит для скриптов Expo).

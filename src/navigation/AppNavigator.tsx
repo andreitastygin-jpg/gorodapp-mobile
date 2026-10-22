@@ -1,30 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { AppWebView } from '../components/AppWebView';
-import { SITE_URL, siteUrlForIncoming } from '../services/linkPolicy';
+import { firstPage, nextPage, NotificationOpen, PageRequest } from '../services/pageRequests';
 import { handleWebSessionMessage, parseWebSessionMessage } from '../services/webSession';
 
 interface AppNavigatorProps {
-  /** A page to open from outside the site (notification tap). */
-  openUrl?: string | null;
+  /** Page from a tapped notification (a new value for every tap). */
+  notificationOpen?: NotificationOpen | null;
 }
 
 // One screen: the site. It can be used without logging in (catalog, food,
 // events); the site asks to log in when it is needed (checkout, bonuses).
-export function AppNavigator({ openUrl }: AppNavigatorProps) {
-  const incoming = Linking.useURL();
-  const [url, setUrl] = useState(() => siteUrlForIncoming(incoming) ?? SITE_URL);
+export function AppNavigator({ notificationOpen }: AppNavigatorProps) {
+  const [page, setPage] = useState<PageRequest>(() =>
+    firstPage(notificationOpen?.url ?? Linking.getLinkingURL()),
+  );
+  const shownNotification = useRef(notificationOpen?.key);
+
+  // Links opened while the app runs (gorodapp://..., QR codes): every one,
+  // the same link twice included.
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => setPage((p) => nextPage(p, url)));
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
-    const next = siteUrlForIncoming(incoming);
-    if (next) setUrl(next);
-  }, [incoming]);
-
-  useEffect(() => {
-    const next = siteUrlForIncoming(openUrl);
-    if (next) setUrl(next);
-  }, [openUrl]);
+    if (!notificationOpen || notificationOpen.key === shownNotification.current) return;
+    shownNotification.current = notificationOpen.key;
+    setPage((p) => nextPage(p, notificationOpen.url));
+  }, [notificationOpen]);
 
   const onWebMessage = (raw: string) => {
     const message = parseWebSessionMessage(raw);
@@ -33,7 +38,7 @@ export function AppNavigator({ openUrl }: AppNavigatorProps) {
 
   return (
     <ScreenContainer>
-      <AppWebView url={url} onWebMessage={onWebMessage} />
+      <AppWebView page={page} onWebMessage={onWebMessage} />
     </ScreenContainer>
   );
 }

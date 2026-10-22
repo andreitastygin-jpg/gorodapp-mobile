@@ -3,6 +3,7 @@ import { ActivityIndicator, BackHandler, Linking, Platform, StyleSheet, View } f
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { OfflineScreen } from '../screens/OfflineScreen';
 import { linkDecision } from '../services/linkPolicy';
+import type { PageRequest } from '../services/pageRequests';
 
 // The whole app is gorodapp.ru inside one WebView. The site does everything
 // itself - catalog, cart, checkout, login (МТС ID / SMS code), consents,
@@ -12,8 +13,8 @@ import { linkDecision } from '../services/linkPolicy';
 // the messages the site sends (see services/webSession.ts).
 
 interface AppWebViewProps {
-  /** Page to show; changing it (deep link, notification) opens that page. */
-  url: string;
+  /** Page to show; every new request (link, notification tap) opens it, the same address included. */
+  page: PageRequest;
   /** Raw messages from the site (window.ReactNativeWebView.postMessage). */
   onWebMessage?: (raw: string) => void;
 }
@@ -24,18 +25,17 @@ const openExternally = (url: string) => {
   });
 };
 
-export const AppWebView: React.FC<AppWebViewProps> = ({ url, onWebMessage }) => {
+export const AppWebView: React.FC<AppWebViewProps> = ({ page, onWebMessage }) => {
   const webViewRef = useRef<WebView>(null);
   const canGoBackRef = useRef(false);
-  const [source, setSource] = useState({ uri: url, nonce: 0 });
+  const [retries, setRetries] = useState(0);
   const [firstLoadDone, setFirstLoadDone] = useState(false);
   const [offline, setOffline] = useState(false);
 
-  // A new page from outside (deep link, notification tap) is opened even when
-  // it is the same address as before.
+  // A new page from outside is tried even when "no connection" is shown.
   useEffect(() => {
-    setSource((s) => ({ uri: url, nonce: s.nonce + 1 }));
-  }, [url]);
+    setOffline(false);
+  }, [page.id]);
 
   // Android Back: the site's history first (it closes the open product, cart,
   // category...); from the first page Android closes the app as usual.
@@ -63,8 +63,11 @@ export const AppWebView: React.FC<AppWebViewProps> = ({ url, onWebMessage }) => 
   const onOpenWindow = (event: { nativeEvent: { targetUrl: string } }) => {
     const target = event.nativeEvent.targetUrl;
     if (!target) return;
-    if (linkDecision(target) === 'load') setSource((s) => ({ uri: target, nonce: s.nonce + 1 }));
-    else openExternally(target);
+    // A page of the site in a new window opens in this one, keeping the
+    // history for Back (a new WebView would lose it).
+    if (linkDecision(target) === 'load') {
+      webViewRef.current?.injectJavaScript(`window.location.assign(${JSON.stringify(target)});true;`);
+    } else openExternally(target);
   };
 
   const onNavigationStateChange = (state: WebViewNavigation) => {
@@ -73,7 +76,7 @@ export const AppWebView: React.FC<AppWebViewProps> = ({ url, onWebMessage }) => 
 
   const retry = () => {
     setOffline(false);
-    setSource((s) => ({ ...s, nonce: s.nonce + 1 }));
+    setRetries((n) => n + 1);
   };
 
   if (offline) return <OfflineScreen onRetry={retry} />;
@@ -82,8 +85,8 @@ export const AppWebView: React.FC<AppWebViewProps> = ({ url, onWebMessage }) => 
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
-        key={`webview-${source.nonce}`}
-        source={{ uri: source.uri }}
+        key={`webview-${page.id}-${retries}`}
+        source={{ uri: page.url }}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled

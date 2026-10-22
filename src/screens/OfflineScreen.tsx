@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { AppText } from '../components/ui/AppText';
 import { AppButton } from '../components/ui/AppButton';
 
@@ -9,8 +8,10 @@ interface OfflineScreenProps {
 }
 
 export const OfflineScreen: React.FC<OfflineScreenProps> = ({ onRetry }) => {
+  // Shown inside the app's screen (AppNavigator), which already keeps the
+  // content below the status bar - no second safe area here.
   return (
-    <ScreenContainer style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.card}>
         <AppText variant="h1" align="center" style={styles.emoji}>
           📶🛑
@@ -29,7 +30,7 @@ export const OfflineScreen: React.FC<OfflineScreenProps> = ({ onRetry }) => {
           />
         )}
       </View>
-    </ScreenContainer>
+    </View>
   );
 };
 

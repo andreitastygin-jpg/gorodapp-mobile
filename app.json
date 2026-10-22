@@ -22,12 +22,16 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "ru.gorodapp.mobile",
-      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -38,7 +42,11 @@
         "backgroundColor": "#ffffff"
       },
       "package": "ru.gorodapp.mobile",
-      "versionCode": 1
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./src/assets/favicon.png"
