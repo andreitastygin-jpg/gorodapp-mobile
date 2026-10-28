@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Gorodapp",
+    "name": "GorodApp",
     "slug": "gorodapp-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,6 +17,7 @@
         "expo-splash-screen",
         {
           "image": "./src/assets/splash.png",
+          "imageWidth": 120,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
@@ -39,7 +40,9 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundImage": "./src/assets/adaptive-icon-background.png",
+        "monochromeImage": "./src/assets/adaptive-icon-monochrome.png",
+        "backgroundColor": "#5655FF"
       },
       "package": "ru.gorodapp.mobile",
       "blockedPermissions": [
